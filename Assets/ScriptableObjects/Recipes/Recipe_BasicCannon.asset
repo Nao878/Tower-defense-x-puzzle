@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d5e73c0cd7af95b40bd92c01b2c99807, type: 3}
+  m_Name: Recipe_BasicCannon
+  m_EditorClassIdentifier: Assembly-CSharp::RecipeData
+  recipeName: "\u57FA\u672C\u30AD\u30E3\u30CE\u30F3\u306E\u5408\u6210"
+  priority: 0
+  patternType: 0
+  requiredPieces: 0000000001000000
+  offsets:
+  - {x: 0, y: 0}
+  - {x: 0, y: 1}
+  resultUnit: {fileID: 11400000, guid: 6e39a2a4806a0364f9a6e2ee23984064, type: 2}
