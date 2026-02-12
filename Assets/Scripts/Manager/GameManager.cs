@@ -1,10 +1,11 @@
 using System;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
 /// ゲーム全体の管理
-/// スコア・ターン管理とUI更新を行う
+/// スコア・ターン管理、リセットボタン表示制御、UI更新を行う
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -17,6 +18,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI scoreText;
     [SerializeField] private TextMeshProUGUI turnText;
     [SerializeField] private TextMeshProUGUI lastCombineText;
+    [SerializeField] private Button resetButton;
 
     /// <summary>
     /// スコア変更イベント
@@ -48,8 +50,17 @@ public class GameManager : MonoBehaviour
         if (puzzleManager != null)
         {
             puzzleManager.OnCombineSuccess += HandleCombineSuccess;
+            puzzleManager.OnEliminationSuccess += HandleEliminationSuccess;
             puzzleManager.OnTurnChanged += HandleTurnChanged;
+            puzzleManager.OnDeadlockChanged += HandleDeadlockChanged;
         }
+
+        if (resetButton != null)
+        {
+            resetButton.onClick.AddListener(OnResetButtonClicked);
+            resetButton.gameObject.SetActive(false);
+        }
+
         UpdateScoreUI();
         UpdateTurnUI(0);
     }
@@ -66,8 +77,20 @@ public class GameManager : MonoBehaviour
         {
             lastCombineText.text = $"{recipe.materialA} + {recipe.materialB} = {recipe.result}  (+{recipe.score}点)";
         }
+    }
 
-        Debug.Log($"[GameManager] スコア加算: +{recipe.score} (合計: {currentScore})");
+    /// <summary>
+    /// 同種消去成功時の処理（スコア加算）
+    /// </summary>
+    private void HandleEliminationSuccess(string kanji, int score)
+    {
+        currentScore += score;
+        UpdateScoreUI();
+
+        if (lastCombineText != null)
+        {
+            lastCombineText.text = $"{kanji} + {kanji} → 消滅！ (+{score}点)";
+        }
     }
 
     /// <summary>
@@ -76,6 +99,33 @@ public class GameManager : MonoBehaviour
     private void HandleTurnChanged(int turn)
     {
         UpdateTurnUI(turn);
+    }
+
+    /// <summary>
+    /// デッドロック状態変更時の処理
+    /// </summary>
+    private void HandleDeadlockChanged(bool isDeadlocked)
+    {
+        if (resetButton != null)
+        {
+            resetButton.gameObject.SetActive(isDeadlocked);
+        }
+
+        if (isDeadlocked && lastCombineText != null)
+        {
+            lastCombineText.text = "合体できるペアがありません！";
+        }
+    }
+
+    /// <summary>
+    /// リセットボタンが押された
+    /// </summary>
+    private void OnResetButtonClicked()
+    {
+        if (puzzleManager != null)
+        {
+            puzzleManager.ResetBoard();
+        }
     }
 
     private void UpdateScoreUI()
@@ -100,7 +150,9 @@ public class GameManager : MonoBehaviour
         if (puzzleManager != null)
         {
             puzzleManager.OnCombineSuccess -= HandleCombineSuccess;
+            puzzleManager.OnEliminationSuccess -= HandleEliminationSuccess;
             puzzleManager.OnTurnChanged -= HandleTurnChanged;
+            puzzleManager.OnDeadlockChanged -= HandleDeadlockChanged;
         }
     }
 }

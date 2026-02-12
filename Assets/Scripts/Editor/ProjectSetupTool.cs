@@ -374,6 +374,12 @@ public class ProjectSetupTool : Editor
             new Vector2(0, -400), new Vector2(700, 80),
             22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
+        // リセットボタン（デッドロック時に表示）
+        GameObject resetBtnGO = CreateButton(canvasGO, "ResetButton", "リセット",
+            new Vector2(0, -300), new Vector2(200, 60),
+            fontSDF, new Color(0.8f, 0.3f, 0.2f), Color.white);
+        resetBtnGO.SetActive(false);
+
         // GameManager
         GameObject gmGO = new GameObject("GameManager");
         GameManager gm = gmGO.AddComponent<GameManager>();
@@ -382,12 +388,14 @@ public class ProjectSetupTool : Editor
         TextMeshProUGUI scoreTMP = scoreText.GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI turnTMP = turnText.GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI lastCombineTMP = lastCombineText.GetComponent<TextMeshProUGUI>();
+        Button resetBtn = resetBtnGO.GetComponent<Button>();
 
         SerializedObject gmSO = new SerializedObject(gm);
         gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
         gmSO.FindProperty("scoreText").objectReferenceValue = scoreTMP;
         gmSO.FindProperty("turnText").objectReferenceValue = turnTMP;
         gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineTMP;
+        gmSO.FindProperty("resetButton").objectReferenceValue = resetBtn;
         gmSO.ApplyModifiedProperties();
     }
 
@@ -412,6 +420,45 @@ public class ProjectSetupTool : Editor
         rt.sizeDelta = size;
 
         return go;
+    }
+
+    private static GameObject CreateButton(GameObject parent, string name, string label,
+        Vector2 anchoredPos, Vector2 size, TMP_FontAsset font, Color bgColor, Color textColor)
+    {
+        GameObject btnGO = new GameObject(name);
+        btnGO.transform.SetParent(parent.transform, false);
+
+        RectTransform btnRT = btnGO.AddComponent<RectTransform>();
+        btnRT.anchoredPosition = anchoredPos;
+        btnRT.sizeDelta = size;
+
+        Image btnBg = btnGO.AddComponent<Image>();
+        btnBg.color = bgColor;
+
+        Button btn = btnGO.AddComponent<Button>();
+        ColorBlock colors = btn.colors;
+        colors.normalColor = bgColor;
+        colors.highlightedColor = bgColor * 1.1f;
+        colors.pressedColor = bgColor * 0.85f;
+        btn.colors = colors;
+
+        GameObject textGO = new GameObject("Text");
+        textGO.transform.SetParent(btnGO.transform, false);
+
+        TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
+        tmp.text = label;
+        tmp.fontSize = 28;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = textColor;
+        if (font != null) tmp.font = font;
+
+        RectTransform textRT = textGO.GetComponent<RectTransform>();
+        textRT.anchorMin = Vector2.zero;
+        textRT.anchorMax = Vector2.one;
+        textRT.sizeDelta = Vector2.zero;
+        textRT.anchoredPosition = Vector2.zero;
+
+        return btnGO;
     }
 
     private static KanjiRecipe[] LoadAllRecipes()

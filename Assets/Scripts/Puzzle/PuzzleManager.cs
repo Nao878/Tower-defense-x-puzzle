@@ -11,13 +11,32 @@ public struct CombinablePair
 {
     public KanjiPiece pieceA;
     public KanjiPiece pieceB;
-    public KanjiRecipe recipe;
+    public KanjiRecipe recipe;      // レシピ合体の場合（消去の場合はnull）
+    public bool isElimination;      // 同種消去か
+    public int eliminationScore;    // 消去時のスコア
 
+    /// <summary>
+    /// レシピ合体用コンストラクタ
+    /// </summary>
     public CombinablePair(KanjiPiece a, KanjiPiece b, KanjiRecipe r)
     {
         pieceA = a;
         pieceB = b;
         recipe = r;
+        isElimination = false;
+        eliminationScore = 0;
+    }
+
+    /// <summary>
+    /// 同種消去用コンストラクタ
+    /// </summary>
+    public CombinablePair(KanjiPiece a, KanjiPiece b, int score)
+    {
+        pieceA = a;
+        pieceB = b;
+        recipe = null;
+        isElimination = true;
+        eliminationScore = score;
     }
 }
 
@@ -25,7 +44,7 @@ public struct CombinablePair
 /// パズル操作フロー統括
 /// 全ピースの入れ替え操作（1ターン1手）、
 /// 隣接する合体可能ペアの黒線表示+振動演出、
-/// クリック合体を管理する
+/// クリック合体・同種消去を管理する
 /// </summary>
 public class PuzzleManager : MonoBehaviour
 {
@@ -36,18 +55,32 @@ public class PuzzleManager : MonoBehaviour
     [Header("線の設定")]
     [SerializeField] private float lineWidth = 0.06f;
 
+    [Header("消去スコア")]
+    [SerializeField] private int eliminationScore = 300;
+
     /// <summary>
-    /// 合体成功イベント（スコア加算用）
+    /// 合体成功イベント（スコア加算用 - レシピ合体）
     /// </summary>
     public event Action<KanjiRecipe> OnCombineSuccess;
+
+    /// <summary>
+    /// 同種消去成功イベント（スコア加算用）
+    /// </summary>
+    public event Action<string, int> OnEliminationSuccess;
 
     /// <summary>
     /// ターン経過イベント
     /// </summary>
     public event Action<int> OnTurnChanged;
 
+    /// <summary>
+    /// デッドロック検出イベント（リセットボタン表示用）
+    /// </summary>
+    public event Action<bool> OnDeadlockChanged;
+
     private KanjiPiece selectedPiece = null;
     private bool isProcessing = false;
+    private bool isDeadlocked = false;
     private Camera mainCamera;
     private int turnCount = 0;
 
@@ -59,6 +92,9 @@ public class PuzzleManager : MonoBehaviour
 
     // 線描画用のスプライト（ランタイムで生成）
     private Sprite lineSprite;
+
+    // 終端漢字のキャッシュ（素材として使われない＝これ以上合体できない漢字）
+    private HashSet<string> terminalKanji = new HashSet<string>();
 
     /// <summary>
     /// レシピ一覧
@@ -77,12 +113,10 @@ public class PuzzleManager : MonoBehaviour
         if (board == null)
             board = GetComponent<PuzzleBoard>();
 
-        // 線用のスプライトを生成
         CreateLineSprite();
+        BuildTerminalKanjiCache();
 
         board.InitializeBoard();
-
-        // 初期スキャン
         StartCoroutine(DelayedScan());
     }
 
@@ -98,6 +132,46 @@ public class PuzzleManager : MonoBehaviour
         tex.SetPixels(pixels);
         tex.Apply();
         lineSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
+    }
+
+    /// <summary>
+    /// 終端漢字のキャッシュを構築する
+    /// レシピの結果漢字のうち、どのレシピの素材にもならないものが終端漢字
+    /// </summary>
+    private void BuildTerminalKanjiCache()
+    {
+        terminalKanji.Clear();
+        if (recipes == null) return;
+
+        // 全てのレシピ結果を収集
+        HashSet<string> resultKanji = new HashSet<string>();
+        HashSet<string> materialKanji = new HashSet<string>();
+
+        foreach (var recipe in recipes)
+        {
+            resultKanji.Add(recipe.result);
+            materialKanji.Add(recipe.materialA);
+            materialKanji.Add(recipe.materialB);
+        }
+
+        // 結果漢字のうち、素材として使われないものが終端漢字
+        foreach (string kanji in resultKanji)
+        {
+            if (!materialKanji.Contains(kanji))
+            {
+                terminalKanji.Add(kanji);
+            }
+        }
+
+        Debug.Log($"[PuzzleManager] 終端漢字: {string.Join(", ", terminalKanji)}");
+    }
+
+    /// <summary>
+    /// 指定漢字が終端漢字（これ以上合体できない）かどうか
+    /// </summary>
+    private bool IsTerminalKanji(string kanji)
+    {
+        return terminalKanji.Contains(kanji);
     }
 
     private IEnumerator DelayedScan()
@@ -140,33 +214,33 @@ public class PuzzleManager : MonoBehaviour
             return;
         }
 
-        // まだ選択していない場合 → どのピースでも選択可能
         if (selectedPiece == null)
         {
             SelectPiece(clickedPiece);
         }
-        // 同じピースを再クリック → 選択解除
         else if (clickedPiece == selectedPiece)
         {
             DeselectCurrent();
         }
-        // 隣接ピースをクリック
         else if (board.AreAdjacent(selectedPiece.row, selectedPiece.col, clickedPiece.row, clickedPiece.col))
         {
-            // 合体可能ペアかチェック
             CombinablePair? pair = FindPairBetween(selectedPiece, clickedPiece);
             if (pair.HasValue)
             {
-                // 合体実行
-                StartCoroutine(ExecuteCombine(selectedPiece, clickedPiece, pair.Value.recipe));
+                if (pair.Value.isElimination)
+                {
+                    StartCoroutine(ExecuteElimination(selectedPiece, clickedPiece, pair.Value.eliminationScore));
+                }
+                else
+                {
+                    StartCoroutine(ExecuteCombine(selectedPiece, clickedPiece, pair.Value.recipe));
+                }
             }
             else
             {
-                // 通常の入れ替え（1ターン消費）
                 StartCoroutine(ExecuteSwap(selectedPiece, clickedPiece));
             }
         }
-        // 隣接でないピースをクリック → 選択変更
         else
         {
             DeselectCurrent();
@@ -197,26 +271,19 @@ public class PuzzleManager : MonoBehaviour
         isProcessing = true;
         DeselectCurrent();
 
-        // 入れ替え実行
         board.SwapPieces(pieceA.row, pieceA.col, pieceB.row, pieceB.col);
 
-        // ターン加算
         turnCount++;
         OnTurnChanged?.Invoke(turnCount);
-        Debug.Log($"[PuzzleManager] ターン {turnCount}: 入れ替え実行");
 
         yield return new WaitForSeconds(0.3f);
 
-        // 再スキャン
         ScanCombinablePairs();
-
         isProcessing = false;
     }
 
     /// <summary>
-    /// 合体実行コルーチン
-    /// firstPiece: 最初にクリックしたピース（空欄になる）
-    /// secondPiece: 2番目にクリックしたピース（ここに結果が出現）
+    /// レシピ合体実行
     /// </summary>
     private IEnumerator ExecuteCombine(KanjiPiece firstPiece, KanjiPiece secondPiece, KanjiRecipe recipe)
     {
@@ -227,32 +294,76 @@ public class PuzzleManager : MonoBehaviour
 
         Debug.Log($"[PuzzleManager] 合体! {recipe.materialA} + {recipe.materialB} = {recipe.result} (+{recipe.score}点)");
 
-        int firstRow = firstPiece.row, firstCol = firstPiece.col;
-
-        // 最初のピースを削除（空欄になる）
-        board.RemovePieceAt(firstRow, firstCol);
-
-        // 2番目のピースの漢字を結果に変更
+        board.RemovePieceAt(firstPiece.row, firstPiece.col);
         secondPiece.SetKanji(recipe.result);
 
-        // スコア加算
         OnCombineSuccess?.Invoke(recipe);
 
         yield return new WaitForSeconds(0.3f);
-
-        // 重力処理
         board.DropPieces();
-
         yield return new WaitForSeconds(0.3f);
-
-        // 空きセル補充
         board.RefillEmptyCells();
+        yield return new WaitForSeconds(0.3f);
+
+        ScanCombinablePairs();
+        isProcessing = false;
+    }
+
+    /// <summary>
+    /// 同種消去実行（終端漢字の同じペアを消す）
+    /// </summary>
+    private IEnumerator ExecuteElimination(KanjiPiece firstPiece, KanjiPiece secondPiece, int score)
+    {
+        isProcessing = true;
+        DeselectCurrent();
+        ClearAllCombinableState();
+        ClearLineIndicators();
+
+        string kanji = firstPiece.Kanji;
+        Debug.Log($"[PuzzleManager] 消去! {kanji} + {kanji} → 消滅 (+{score}点)");
+
+        board.RemovePieceAt(firstPiece.row, firstPiece.col);
+        board.RemovePieceAt(secondPiece.row, secondPiece.col);
+
+        OnEliminationSuccess?.Invoke(kanji, score);
+
+        yield return new WaitForSeconds(0.3f);
+        board.DropPieces();
+        yield return new WaitForSeconds(0.3f);
+        board.RefillEmptyCells();
+        yield return new WaitForSeconds(0.3f);
+
+        ScanCombinablePairs();
+        isProcessing = false;
+    }
+
+    /// <summary>
+    /// 盤面を全リセットする（デッドロック解消用）
+    /// </summary>
+    public void ResetBoard()
+    {
+        StartCoroutine(ExecuteReset());
+    }
+
+    private IEnumerator ExecuteReset()
+    {
+        isProcessing = true;
+        ClearLineIndicators();
+        ClearAllCombinableState();
+
+        board.ClearBoard();
+
+        yield return new WaitForSeconds(0.2f);
+
+        board.FillBoard();
 
         yield return new WaitForSeconds(0.3f);
 
-        // 再スキャン
-        ScanCombinablePairs();
+        // デッドロック解除
+        isDeadlocked = false;
+        OnDeadlockChanged?.Invoke(false);
 
+        ScanCombinablePairs();
         isProcessing = false;
     }
 
@@ -262,6 +373,7 @@ public class PuzzleManager : MonoBehaviour
 
     /// <summary>
     /// 盤面全体をスキャンし、合体可能なペアを検出して黒線と振動を表示する
+    /// デッドロック判定も行う
     /// </summary>
     public void ScanCombinablePairs()
     {
@@ -281,30 +393,29 @@ public class PuzzleManager : MonoBehaviour
                 // 右隣チェック
                 if (c + 1 < PuzzleBoard.SIZE && board.Grid[r, c + 1] != null)
                 {
-                    KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r, c + 1].Kanji);
-                    if (recipe != null)
-                    {
-                        KanjiPiece otherPiece = board.Grid[r, c + 1];
-                        combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
-                        piece.SetCombinable(true);
-                        otherPiece.SetCombinable(true);
-                        CreateLineIndicator(piece, otherPiece, isHorizontal: true);
-                    }
+                    CheckAndAddPair(piece, board.Grid[r, c + 1], true);
                 }
 
                 // 上隣チェック
                 if (r + 1 < PuzzleBoard.SIZE && board.Grid[r + 1, c] != null)
                 {
-                    KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r + 1, c].Kanji);
-                    if (recipe != null)
-                    {
-                        KanjiPiece otherPiece = board.Grid[r + 1, c];
-                        combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
-                        piece.SetCombinable(true);
-                        otherPiece.SetCombinable(true);
-                        CreateLineIndicator(piece, otherPiece, isHorizontal: false);
-                    }
+                    CheckAndAddPair(piece, board.Grid[r + 1, c], false);
                 }
+            }
+        }
+
+        // 隣接でなくても盤面全体で合体可能なペアがあるかチェック（入れ替えで隣接にできる可能性）
+        bool hasAnyPossibleAction = combinablePairs.Count > 0 || HasAnyPossibleMatch();
+        bool newDeadlocked = !hasAnyPossibleAction;
+
+        if (newDeadlocked != isDeadlocked)
+        {
+            isDeadlocked = newDeadlocked;
+            OnDeadlockChanged?.Invoke(isDeadlocked);
+
+            if (isDeadlocked)
+            {
+                Debug.Log("[PuzzleManager] デッドロック検出！合体可能なペアがありません");
             }
         }
 
@@ -312,6 +423,65 @@ public class PuzzleManager : MonoBehaviour
         {
             Debug.Log($"[PuzzleManager] 合体可能ペア: {combinablePairs.Count}組");
         }
+    }
+
+    /// <summary>
+    /// 2つの隣接ピースの合体・消去可能性をチェックし、ペアリストに追加する
+    /// </summary>
+    private void CheckAndAddPair(KanjiPiece piece, KanjiPiece otherPiece, bool isHorizontal)
+    {
+        // レシピ合体チェック
+        KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, otherPiece.Kanji);
+        if (recipe != null)
+        {
+            combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
+            piece.SetCombinable(true);
+            otherPiece.SetCombinable(true);
+            CreateLineIndicator(piece, otherPiece, isHorizontal);
+            return;
+        }
+
+        // 同種終端漢字の消去チェック
+        if (piece.Kanji == otherPiece.Kanji && IsTerminalKanji(piece.Kanji))
+        {
+            combinablePairs.Add(new CombinablePair(piece, otherPiece, eliminationScore));
+            piece.SetCombinable(true);
+            otherPiece.SetCombinable(true);
+            CreateLineIndicator(piece, otherPiece, isHorizontal);
+        }
+    }
+
+    /// <summary>
+    /// 盤面全体で（入れ替え1回で）実現可能なマッチがあるかチェック
+    /// </summary>
+    private bool HasAnyPossibleMatch()
+    {
+        // 盤面上の全漢字を収集
+        List<string> allKanji = new List<string>();
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
+        {
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
+            {
+                if (board.Grid[r, c] != null)
+                    allKanji.Add(board.Grid[r, c].Kanji);
+            }
+        }
+
+        // 任意の2つの漢字ペアでレシピマッチがあるか
+        for (int i = 0; i < allKanji.Count; i++)
+        {
+            for (int j = i + 1; j < allKanji.Count; j++)
+            {
+                KanjiRecipe recipe = FindMatchingRecipe(allKanji[i], allKanji[j]);
+                if (recipe != null) return true;
+
+                // 同種終端漢字チェック
+                if (allKanji[i] == allKanji[j] && IsTerminalKanji(allKanji[i]))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -348,9 +518,6 @@ public class PuzzleManager : MonoBehaviour
         return null;
     }
 
-    /// <summary>
-    /// マッチするレシピを検索する
-    /// </summary>
     private KanjiRecipe FindMatchingRecipe(string a, string b)
     {
         foreach (var recipe in recipes)
@@ -361,9 +528,6 @@ public class PuzzleManager : MonoBehaviour
         return null;
     }
 
-    /// <summary>
-    /// 2つのピース間に黒線インジケータを作成する
-    /// </summary>
     private void CreateLineIndicator(KanjiPiece a, KanjiPiece b, bool isHorizontal)
     {
         if (lineSprite == null) return;
@@ -371,7 +535,7 @@ public class PuzzleManager : MonoBehaviour
         Vector3 posA = board.GridToWorldPosition(a.row, a.col);
         Vector3 posB = board.GridToWorldPosition(b.row, b.col);
         Vector3 midPoint = (posA + posB) / 2f;
-        midPoint.z = -1f; // ピースの前面に表示
+        midPoint.z = -1f;
 
         GameObject lineObj = new GameObject("CombineLine");
         lineObj.transform.SetParent(transform);
@@ -385,20 +549,13 @@ public class PuzzleManager : MonoBehaviour
         float gap = board.CellSize * 0.3f;
 
         if (isHorizontal)
-        {
             lineObj.transform.localScale = new Vector3(gap, lineWidth, 1f);
-        }
         else
-        {
             lineObj.transform.localScale = new Vector3(lineWidth, gap, 1f);
-        }
 
         lineIndicators.Add(lineObj);
     }
 
-    /// <summary>
-    /// 全ての線インジケータを削除する
-    /// </summary>
     private void ClearLineIndicators()
     {
         foreach (var line in lineIndicators)
