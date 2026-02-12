@@ -353,21 +353,32 @@ public class ProjectSetupTool : Editor
             new Vector2(0, 440), new Vector2(600, 80),
             48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
-        // 基本スコア表示
-        GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "基本スコア: 0",
-            new Vector2(-200, 380), new Vector2(350, 40),
-            26, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+        // タイマー表示
+        GameObject timeText = CreateTMPText(canvasGO, "TimeText", "Time: 60.00",
+            new Vector2(0, 380), new Vector2(400, 50),
+            36, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
-        // ターン表示
-        GameObject turnText = CreateTMPText(canvasGO, "TurnText", "ターン: 0",
-            new Vector2(200, 380), new Vector2(300, 40),
-            26, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+        // ハイスコア表示（左上）
+        GameObject highScoreTextGO = CreateTMPText(canvasGO, "HighScoreText", "Best: 0",
+            new Vector2(0, 0), new Vector2(250, 40),
+            24, fontSDF, new Color(0.6f, 0.45f, 0.0f), TextAlignmentOptions.Left);
 
-        // トータルスコア表示
-        GameObject totalScoreText = CreateTMPText(canvasGO, "TotalScoreText",
-            "トータル: 5000  (ボーナス: 5000)",
-            new Vector2(0, 340), new Vector2(600, 40),
-            28, fontSDF, new Color(0.8f, 0.4f, 0.0f), TextAlignmentOptions.Center);
+        RectTransform hsRT = highScoreTextGO.GetComponent<RectTransform>();
+        hsRT.anchorMin = new Vector2(0, 1);
+        hsRT.anchorMax = new Vector2(0, 1);
+        hsRT.pivot = new Vector2(0, 1);
+        hsRT.anchoredPosition = new Vector2(20, -20);
+
+        // 時間ボーナスポップアップ（タイマーの横）
+        GameObject timeBonusPopup = CreateTMPText(canvasGO, "TimeBonusPopup", "+3sec",
+            new Vector2(220, 380), new Vector2(200, 40),
+            28, fontSDF, new Color(0.1f, 0.7f, 0.2f), TextAlignmentOptions.Left);
+        timeBonusPopup.SetActive(false);
+
+        // スコア表示
+        GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
+            new Vector2(0, 340), new Vector2(400, 40),
+            30, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
         // 最後の合体情報
         GameObject lastCombineText = CreateTMPText(canvasGO, "LastCombineText", "",
@@ -376,7 +387,7 @@ public class ProjectSetupTool : Editor
 
         // 操作説明
         CreateTMPText(canvasGO, "InstructionText",
-            "ピースをクリックして選択 → 隣のピースをクリックで入れ替え\n振動しているペアをクリックで合体！",
+            "ピースをクリックして選択 → 隣のピースをクリックで入れ替え\n振動しているペアをクリックで合体すると時間回復！",
             new Vector2(0, -400), new Vector2(700, 80),
             22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
@@ -385,7 +396,6 @@ public class ProjectSetupTool : Editor
             new Vector2(0, 0), new Vector2(160, 60),
             fontSDF, new Color(0.5f, 0.5f, 0.55f), Color.white);
 
-        // 右上にアンカー配置
         RectTransform resetRT = resetBtnGO.GetComponent<RectTransform>();
         resetRT.anchorMin = new Vector2(1, 1);
         resetRT.anchorMax = new Vector2(1, 1);
@@ -396,7 +406,6 @@ public class ProjectSetupTool : Editor
         TextMeshProUGUI resetBtnLabel = resetBtnGO.GetComponentInChildren<TextMeshProUGUI>();
 
         // ===== 確認ダイアログパネル =====
-        // 半透明背景
         GameObject confirmPanel = new GameObject("ConfirmResetPanel");
         confirmPanel.transform.SetParent(canvasGO.transform, false);
 
@@ -408,7 +417,6 @@ public class ProjectSetupTool : Editor
         Image cpBg = confirmPanel.AddComponent<Image>();
         cpBg.color = new Color(0, 0, 0, 0.5f);
 
-        // ダイアログボックス
         GameObject dialogBox = new GameObject("DialogBox");
         dialogBox.transform.SetParent(confirmPanel.transform, false);
 
@@ -419,23 +427,54 @@ public class ProjectSetupTool : Editor
         Image dbBg = dialogBox.AddComponent<Image>();
         dbBg.color = new Color(0.95f, 0.92f, 0.88f);
 
-        // ダイアログテキスト
         GameObject confirmTextGO = CreateTMPText(dialogBox, "ConfirmText",
-            "盤面を入れ替えますか？\n（ペナルティ: +5ターン）",
+            "盤面を入れ替えますか？\n（ペナルティ: -10秒）",
             new Vector2(0, 30), new Vector2(450, 130),
             26, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
-        // はいボタン
         GameObject yesBtnGO = CreateButton(dialogBox, "YesButton", "はい",
             new Vector2(-90, -80), new Vector2(140, 50),
             fontSDF, new Color(0.2f, 0.6f, 0.3f), Color.white);
 
-        // いいえボタン
         GameObject noBtnGO = CreateButton(dialogBox, "NoButton", "いいえ",
             new Vector2(90, -80), new Vector2(140, 50),
             fontSDF, new Color(0.6f, 0.3f, 0.2f), Color.white);
 
         confirmPanel.SetActive(false);
+
+        // ===== ゲームオーバーパネル =====
+        GameObject gameOverPanel = new GameObject("GameOverPanel");
+        gameOverPanel.transform.SetParent(canvasGO.transform, false);
+
+        RectTransform goRT = gameOverPanel.AddComponent<RectTransform>();
+        goRT.anchorMin = Vector2.zero;
+        goRT.anchorMax = Vector2.one;
+        goRT.sizeDelta = Vector2.zero;
+
+        Image goBg = gameOverPanel.AddComponent<Image>();
+        goBg.color = new Color(0, 0, 0, 0.7f);
+
+        GameObject goBox = new GameObject("GameOverBox");
+        goBox.transform.SetParent(gameOverPanel.transform, false);
+
+        RectTransform goBoxRT = goBox.AddComponent<RectTransform>();
+        goBoxRT.anchoredPosition = Vector2.zero;
+        goBoxRT.sizeDelta = new Vector2(600, 300);
+
+        Image goBoxBg = goBox.AddComponent<Image>();
+        goBoxBg.color = new Color(0.95f, 0.92f, 0.88f);
+
+        GameObject gameOverScoreText = CreateTMPText(goBox, "GameOverScoreText",
+            "TIME UP!\n\n最終スコア: 0",
+            new Vector2(0, 30), new Vector2(500, 200),
+            36, fontSDF, new Color(0.8f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+
+        // リトライボタン
+        GameObject retryBtnGO = CreateButton(goBox, "RetryButton", "リトライ",
+            new Vector2(0, -100), new Vector2(200, 60),
+            fontSDF, new Color(0.2f, 0.5f, 0.8f), Color.white);
+
+        gameOverPanel.SetActive(false);
 
         // ===== GameManager =====
         GameObject gmGO = new GameObject("GameManager");
@@ -446,8 +485,8 @@ public class ProjectSetupTool : Editor
         SerializedObject gmSO = new SerializedObject(gm);
         gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
         gmSO.FindProperty("scoreText").objectReferenceValue = scoreText.GetComponent<TextMeshProUGUI>();
-        gmSO.FindProperty("turnText").objectReferenceValue = turnText.GetComponent<TextMeshProUGUI>();
-        gmSO.FindProperty("totalScoreText").objectReferenceValue = totalScoreText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("timeText").objectReferenceValue = timeText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("timeBonusPopup").objectReferenceValue = timeBonusPopup.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineText.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("resetButton").objectReferenceValue = resetBtnGO.GetComponent<Button>();
         gmSO.FindProperty("resetButtonLabel").objectReferenceValue = resetBtnLabel;
@@ -456,6 +495,10 @@ public class ProjectSetupTool : Editor
         gmSO.FindProperty("confirmResetText").objectReferenceValue = confirmTextGO.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtnGO.GetComponent<Button>();
         gmSO.FindProperty("confirmNoButton").objectReferenceValue = noBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("gameOverPanel").objectReferenceValue = gameOverPanel;
+        gmSO.FindProperty("gameOverScoreText").objectReferenceValue = gameOverScoreText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("retryButton").objectReferenceValue = retryBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("highScoreText").objectReferenceValue = highScoreTextGO.GetComponent<TextMeshProUGUI>();
         gmSO.ApplyModifiedProperties();
     }
 

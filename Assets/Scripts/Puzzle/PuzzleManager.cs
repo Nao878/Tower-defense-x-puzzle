@@ -43,19 +43,15 @@ public class PuzzleManager : MonoBehaviour
     [Header("消去スコア")]
     [SerializeField] private int eliminationScore = 300;
 
-    [Header("リセットペナルティ")]
-    [SerializeField] private int resetPenaltyTurns = 5;
-
     public event Action<KanjiRecipe> OnCombineSuccess;
     public event Action<string, int> OnEliminationSuccess;
-    public event Action<int> OnTurnChanged;
     public event Action<bool> OnStalemateChanged;
 
     private KanjiPiece selectedPiece = null;
     private bool isProcessing = false;
     private bool isStalemate = false;
+    private bool isGameOver = false;
     private Camera mainCamera;
-    private int turnCount = 0;
 
     private List<CombinablePair> combinablePairs = new List<CombinablePair>();
     private List<GameObject> lineIndicators = new List<GameObject>();
@@ -63,9 +59,12 @@ public class PuzzleManager : MonoBehaviour
     private HashSet<string> terminalKanji = new HashSet<string>();
 
     public KanjiRecipe[] Recipes => recipes;
-    public int TurnCount => turnCount;
     public bool IsStalemate => isStalemate;
-    public int ResetPenaltyTurns => resetPenaltyTurns;
+
+    /// <summary>
+    /// ゲームオーバー状態を設定（入力ブロック）
+    /// </summary>
+    public void SetGameOver(bool gameOver) { isGameOver = gameOver; }
 
     private void Start()
     {
@@ -123,7 +122,7 @@ public class PuzzleManager : MonoBehaviour
 
     private void Update()
     {
-        if (isProcessing) return;
+        if (isProcessing || isGameOver) return;
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             HandleClick();
     }
@@ -181,8 +180,6 @@ public class PuzzleManager : MonoBehaviour
         isProcessing = true;
         DeselectCurrent();
         board.SwapPieces(pieceA.row, pieceA.col, pieceB.row, pieceB.col);
-        turnCount++;
-        OnTurnChanged?.Invoke(turnCount);
         yield return new WaitForSeconds(0.3f);
         ScanAndCheckStalemate();
         isProcessing = false;
@@ -229,7 +226,7 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 盤面リセット（ペナルティ付き）
+    /// 盤面リセット（ペナルティはGameManager側で処理）
     /// </summary>
     public void ResetBoard()
     {
@@ -242,10 +239,6 @@ public class PuzzleManager : MonoBehaviour
         ClearLineIndicators();
         ClearAllCombinableState();
         board.ClearBoard();
-
-        // ペナルティ: ターン加算
-        turnCount += resetPenaltyTurns;
-        OnTurnChanged?.Invoke(turnCount);
 
         yield return new WaitForSeconds(0.2f);
         board.FillBoard();
