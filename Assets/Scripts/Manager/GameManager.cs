@@ -1,20 +1,11 @@
 using System;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
-/// ゲーム状態
-/// </summary>
-public enum GameState
-{
-    Preparing,  // 準備中
-    Playing,    // プレイ中
-    GameOver,   // ゲームオーバー
-    Victory     // クリア
-}
-
-/// <summary>
-/// ゲーム全体のフロー管理
-/// HP、ウェーブ進行、ゲーム状態を統括する
+/// ゲーム全体の管理
+/// スコア管理、合体確認フローのステート管理、UI更新
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -22,35 +13,25 @@ public class GameManager : MonoBehaviour
 
     [Header("参照")]
     [SerializeField] private PuzzleManager puzzleManager;
-    [SerializeField] private EnemySpawner enemySpawner;
-    [SerializeField] private UnitSpawner unitSpawner;
 
-    [Header("ゲーム設定")]
-    [Tooltip("拠点の初期耐久値")]
-    [SerializeField] private float maxBaseHp = 100f;
-
-    /// <summary>
-    /// ゲーム状態変更イベント
-    /// </summary>
-    public event Action<GameState> OnGameStateChanged;
+    [Header("UI参照")]
+    [SerializeField] private TextMeshProUGUI scoreText;
+    [SerializeField] private TextMeshProUGUI combineInfoText;
+    [SerializeField] private GameObject confirmPanel;
+    [SerializeField] private Button confirmYesButton;
+    [SerializeField] private Button confirmNoButton;
 
     /// <summary>
-    /// 拠点HP変更イベント
+    /// スコア変更イベント
     /// </summary>
-    public event Action<float, float> OnBaseHpChanged; // (currentHp, maxHp)
+    public event Action<int> OnScoreChanged;
 
-    private float currentBaseHp;
-    private GameState currentState = GameState.Preparing;
-
-    /// <summary>
-    /// 現在のゲーム状態
-    /// </summary>
-    public GameState CurrentState => currentState;
+    private int currentScore = 0;
 
     /// <summary>
-    /// 現在の拠点HP
+    /// 現在のスコア
     /// </summary>
-    public float CurrentBaseHp => currentBaseHp;
+    public int CurrentScore => currentScore;
 
     private void Awake()
     {
@@ -67,79 +48,112 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        currentBaseHp = maxBaseHp;
-
         // イベント接続
-        if (enemySpawner != null)
+        if (puzzleManager != null)
         {
-            enemySpawner.OnEnemyReachedGoal += HandleEnemyReachedGoal;
-            enemySpawner.OnAllWavesComplete += HandleAllWavesComplete;
+            puzzleManager.OnCombineConfirmRequested += HandleCombineConfirmRequest;
+            puzzleManager.OnCombineSuccess += HandleCombineSuccess;
         }
 
-        // ゲーム開始
-        StartGame();
+        // ボタンイベント
+        if (confirmYesButton != null)
+            confirmYesButton.onClick.AddListener(OnConfirmYes);
+        if (confirmNoButton != null)
+            confirmNoButton.onClick.AddListener(OnConfirmNo);
+
+        // UI初期化
+        HideConfirmPanel();
+        UpdateScoreUI();
     }
 
     /// <summary>
-    /// ゲームを開始する
+    /// 合体確認リクエストを受け取った時の処理
     /// </summary>
-    public void StartGame()
+    private void HandleCombineConfirmRequest(CombineMatch match)
     {
-        currentBaseHp = maxBaseHp;
-        ChangeState(GameState.Playing);
-
-        if (enemySpawner != null)
-        {
-            enemySpawner.StartWaves();
-        }
-
-        Debug.Log("[GameManager] ゲーム開始！");
+        ShowConfirmPanel(match);
     }
 
     /// <summary>
-    /// 敵がゴールに到達した時の処理
+    /// 合体成功時の処理（スコア加算）
     /// </summary>
-    private void HandleEnemyReachedGoal(EnemyController enemy)
+    private void HandleCombineSuccess(KanjiRecipe recipe)
     {
-        currentBaseHp -= 10f; // 敵がゴール到達するたびに10ダメージ
-        OnBaseHpChanged?.Invoke(currentBaseHp, maxBaseHp);
-
-        Debug.Log($"[GameManager] 拠点がダメージを受けた！残りHP: {currentBaseHp}");
-
-        if (currentBaseHp <= 0f)
-        {
-            ChangeState(GameState.GameOver);
-            Debug.Log("[GameManager] ゲームオーバー！");
-        }
+        currentScore += recipe.score;
+        UpdateScoreUI();
+        HideConfirmPanel();
+        Debug.Log($"[GameManager] スコア加算: +{recipe.score} (合計: {currentScore})");
     }
 
     /// <summary>
-    /// 全ウェーブ終了時の処理
+    /// 確認パネルを表示する
     /// </summary>
-    private void HandleAllWavesComplete()
+    private void ShowConfirmPanel(CombineMatch match)
     {
-        if (currentState == GameState.Playing)
+        if (confirmPanel != null)
         {
-            ChangeState(GameState.Victory);
-            Debug.Log("[GameManager] 勝利！");
+            confirmPanel.SetActive(true);
+        }
+
+        if (combineInfoText != null)
+        {
+            combineInfoText.text = $"{match.recipe.materialA} + {match.recipe.materialB} = {match.recipe.result}\n(+{match.recipe.score}点)";
         }
     }
 
     /// <summary>
-    /// ゲーム状態を変更する
+    /// 確認パネルを非表示にする
     /// </summary>
-    private void ChangeState(GameState newState)
+    private void HideConfirmPanel()
     {
-        currentState = newState;
-        OnGameStateChanged?.Invoke(newState);
+        if (confirmPanel != null)
+        {
+            confirmPanel.SetActive(false);
+        }
+    }
+
+    /// <summary>
+    /// 「はい」ボタンが押された
+    /// </summary>
+    private void OnConfirmYes()
+    {
+        HideConfirmPanel();
+        if (puzzleManager != null)
+        {
+            puzzleManager.ConfirmCombine();
+        }
+    }
+
+    /// <summary>
+    /// 「いいえ」ボタンが押された
+    /// </summary>
+    private void OnConfirmNo()
+    {
+        HideConfirmPanel();
+        if (puzzleManager != null)
+        {
+            puzzleManager.CancelCombine();
+        }
+    }
+
+    /// <summary>
+    /// スコアUIを更新する
+    /// </summary>
+    private void UpdateScoreUI()
+    {
+        if (scoreText != null)
+        {
+            scoreText.text = $"スコア: {currentScore}";
+        }
+        OnScoreChanged?.Invoke(currentScore);
     }
 
     private void OnDestroy()
     {
-        if (enemySpawner != null)
+        if (puzzleManager != null)
         {
-            enemySpawner.OnEnemyReachedGoal -= HandleEnemyReachedGoal;
-            enemySpawner.OnAllWavesComplete -= HandleAllWavesComplete;
+            puzzleManager.OnCombineConfirmRequested -= HandleCombineConfirmRequest;
+            puzzleManager.OnCombineSuccess -= HandleCombineSuccess;
         }
     }
 }

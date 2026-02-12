@@ -4,84 +4,82 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// パズルの操作統括マネージャー
-/// パズドラ風ドラッグ操作、合成判定、パーツ消費・補充を管理する
+/// 合体マッチ結果
+/// </summary>
+public struct CombineMatch
+{
+    public KanjiPiece pieceA;
+    public KanjiPiece pieceB;
+    public KanjiRecipe recipe;
+
+    public CombineMatch(KanjiPiece a, KanjiPiece b, KanjiRecipe r)
+    {
+        pieceA = a;
+        pieceB = b;
+        recipe = r;
+    }
+}
+
+/// <summary>
+/// パズル操作フロー統括
+/// ピース選択→隣接入れ替え→合体判定→確認ダイアログ→合体/キャンセル→重力処理
 /// </summary>
 public class PuzzleManager : MonoBehaviour
 {
     [Header("参照")]
     [SerializeField] private PuzzleBoard board;
-    [SerializeField] private RecipeDatabase recipeDatabase;
-
-    [Header("操作設定")]
-    [Tooltip("ドラッグ中のピースの拡大倍率")]
-    [SerializeField] private float dragScale = 1.2f;
-
-    [Tooltip("ドラッグ中のピースのソート順（前面に表示）")]
-    [SerializeField] private int dragSortingOrder = 10;
+    [SerializeField] private KanjiRecipe[] recipes;
 
     /// <summary>
-    /// ユニット合成成功時のイベント
+    /// 合体確認リクエストのイベント（UIに通知）
     /// </summary>
-    public event Action<UnitData> OnUnitSynthesized;
+    public event Action<CombineMatch> OnCombineConfirmRequested;
 
-    // ドラッグ状態
-    private bool isDragging = false;
-    private Piece draggedPiece = null;
-    private int originalSortingOrder;
-    private Vector3 originalScale;
-    private Camera mainCamera;
+    /// <summary>
+    /// 合体成功イベント（スコア加算等に使用）
+    /// </summary>
+    public event Action<KanjiRecipe> OnCombineSuccess;
+
+    private KanjiPiece selectedPiece = null;
     private bool isProcessing = false;
+    private bool waitingForConfirm = false;
+    private CombineMatch pendingMatch;
+    private Camera mainCamera;
+
+    /// <summary>
+    /// 操作可能かどうか
+    /// </summary>
+    public bool CanInteract => !isProcessing && !waitingForConfirm;
+
+    /// <summary>
+    /// レシピ一覧
+    /// </summary>
+    public KanjiRecipe[] Recipes => recipes;
 
     private void Start()
     {
         mainCamera = Camera.main;
 
         if (board == null)
-            board = GetComponentInChildren<PuzzleBoard>();
-        if (recipeDatabase == null)
-            recipeDatabase = GetComponent<RecipeDatabase>();
+            board = GetComponent<PuzzleBoard>();
 
-        // 盤面を初期化
-        if (board != null)
-        {
-            board.InitializeBoard();
-        }
+        board.InitializeBoard();
     }
 
     private void Update()
     {
-        if (isProcessing) return;
+        if (!CanInteract) return;
 
-        HandleInput();
-    }
-
-    /// <summary>
-    /// マウス/タッチ入力の処理
-    /// </summary>
-    private void HandleInput()
-    {
-        // ドラッグ開始
         if (Input.GetMouseButtonDown(0))
         {
-            TryStartDrag();
-        }
-        // ドラッグ中
-        else if (Input.GetMouseButton(0) && isDragging)
-        {
-            UpdateDrag();
-        }
-        // ドラッグ終了
-        else if (Input.GetMouseButtonUp(0) && isDragging)
-        {
-            EndDrag();
+            HandleClick();
         }
     }
 
     /// <summary>
-    /// ドラッグの開始を試みる
+    /// クリック処理
     /// </summary>
-    private void TryStartDrag()
+    private void HandleClick()
     {
         Vector3 worldPos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
         worldPos.z = 0f;
@@ -89,141 +87,203 @@ public class PuzzleManager : MonoBehaviour
         Vector2Int gridPos = board.WorldToGridPosition(worldPos);
 
         if (!board.IsValidPosition(gridPos.x, gridPos.y))
-            return;
-
-        Piece piece = board.Grid[gridPos.x, gridPos.y];
-        if (piece == null)
-            return;
-
-        // ドラッグ開始
-        isDragging = true;
-        draggedPiece = piece;
-
-        // ビジュアルを前面に
-        SpriteRenderer sr = draggedPiece.GetComponent<SpriteRenderer>();
-        if (sr != null)
         {
-            originalSortingOrder = sr.sortingOrder;
-            sr.sortingOrder = dragSortingOrder;
+            DeselectCurrent();
+            return;
         }
 
-        originalScale = draggedPiece.transform.localScale;
-        draggedPiece.transform.localScale = originalScale * dragScale;
+        KanjiPiece clickedPiece = board.Grid[gridPos.x, gridPos.y];
+        if (clickedPiece == null)
+        {
+            DeselectCurrent();
+            return;
+        }
+
+        // まだ選択していない場合 → 選択
+        if (selectedPiece == null)
+        {
+            SelectPiece(clickedPiece);
+        }
+        // 同じピースを再クリック → 選択解除
+        else if (clickedPiece == selectedPiece)
+        {
+            DeselectCurrent();
+        }
+        // 隣接ピースをクリック → 入れ替え
+        else if (board.AreAdjacent(selectedPiece.row, selectedPiece.col, clickedPiece.row, clickedPiece.col))
+        {
+            StartCoroutine(PerformSwapAndCheck(selectedPiece, clickedPiece));
+        }
+        // 隣接でないピースをクリック → 選択変更
+        else
+        {
+            DeselectCurrent();
+            SelectPiece(clickedPiece);
+        }
     }
 
-    /// <summary>
-    /// ドラッグ中の更新
-    /// ドラッグ中のピースとそれが通過したセルのピースを入れ替える
-    /// </summary>
-    private void UpdateDrag()
+    private void SelectPiece(KanjiPiece piece)
     {
-        if (draggedPiece == null) return;
-
-        Vector3 worldPos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
-        worldPos.z = 0f;
-
-        // ドラッグ中のピースをマウスに追従
-        draggedPiece.transform.position = worldPos;
-
-        // 現在のマウス位置のグリッド座標を求める
-        Vector2Int gridPos = board.WorldToGridPosition(worldPos);
-
-        if (!board.IsValidPosition(gridPos.x, gridPos.y))
-            return;
-
-        // ドラッグ中のピースが他のセルに入った場合、入れ替え
-        if (gridPos.x != draggedPiece.row || gridPos.y != draggedPiece.col)
-        {
-            Piece otherPiece = board.Grid[gridPos.x, gridPos.y];
-            if (otherPiece != null && otherPiece != draggedPiece)
-            {
-                // 入れ替え先のピースを元の位置に移動
-                int oldRow = draggedPiece.row;
-                int oldCol = draggedPiece.col;
-
-                board.SwapPieces(oldRow, oldCol, gridPos.x, gridPos.y);
-
-                // 入れ替わったピースをアニメーション移動
-                otherPiece.MoveTo(board.GridToWorldPosition(oldRow, oldCol));
-            }
-        }
+        selectedPiece = piece;
+        piece.SetSelected(true);
     }
 
-    /// <summary>
-    /// ドラッグの終了
-    /// ピースを所定位置に戻し、合成判定を実行する
-    /// </summary>
-    private void EndDrag()
+    private void DeselectCurrent()
     {
-        if (draggedPiece == null) return;
-
-        // ビジュアルを元に戻す
-        SpriteRenderer sr = draggedPiece.GetComponent<SpriteRenderer>();
-        if (sr != null)
+        if (selectedPiece != null)
         {
-            sr.sortingOrder = originalSortingOrder;
+            selectedPiece.SetSelected(false);
+            selectedPiece = null;
         }
-        draggedPiece.transform.localScale = originalScale;
-
-        // ピースを正しいグリッド位置に配置
-        draggedPiece.SetPositionImmediate(
-            board.GridToWorldPosition(draggedPiece.row, draggedPiece.col)
-        );
-
-        isDragging = false;
-        draggedPiece = null;
-
-        // 合成判定を実行
-        StartCoroutine(ProcessSynthesis());
     }
 
     /// <summary>
-    /// 合成判定と処理のコルーチン
+    /// ピースの入れ替えと合体判定
     /// </summary>
-    private IEnumerator ProcessSynthesis()
+    private IEnumerator PerformSwapAndCheck(KanjiPiece pieceA, KanjiPiece pieceB)
     {
         isProcessing = true;
+        DeselectCurrent();
 
-        bool foundMatch;
-        do
+        int r1 = pieceA.row, c1 = pieceA.col;
+        int r2 = pieceB.row, c2 = pieceB.col;
+
+        // 入れ替え実行
+        board.SwapPieces(r1, c1, r2, c2);
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 合体判定：盤面全体の隣接ペアをチェック
+        CombineMatch? match = FindCombineMatch();
+
+        if (match.HasValue)
         {
-            foundMatch = false;
+            // 合体可能 → 確認ダイアログを表示
+            pendingMatch = match.Value;
+            waitingForConfirm = true;
+            isProcessing = false;
 
-            // レシピチェック
-            List<RecipeMatch> matches = recipeDatabase.CheckRecipes(board.Grid);
+            // ハイライト表示
+            pendingMatch.pieceA.SetSelected(true);
+            pendingMatch.pieceB.SetSelected(true);
 
-            if (matches.Count > 0)
+            OnCombineConfirmRequested?.Invoke(pendingMatch);
+        }
+        else
+        {
+            // 合体なし → そのまま次の操作へ
+            isProcessing = false;
+        }
+    }
+
+    /// <summary>
+    /// 盤面全体から合体可能なペアを探す
+    /// </summary>
+    private CombineMatch? FindCombineMatch()
+    {
+        if (recipes == null) return null;
+
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
+        {
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
             {
-                foundMatch = true;
+                KanjiPiece piece = board.Grid[r, c];
+                if (piece == null) continue;
 
-                foreach (var match in matches)
+                // 右隣チェック
+                if (c + 1 < PuzzleBoard.SIZE && board.Grid[r, c + 1] != null)
                 {
-                    // マッチしたセルのピースを消費
-                    foreach (var cell in match.matchedCells)
+                    KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r, c + 1].Kanji);
+                    if (recipe != null)
                     {
-                        board.RemovePieceAt(cell.x, cell.y);
+                        return new CombineMatch(piece, board.Grid[r, c + 1], recipe);
                     }
-
-                    // 合成成功イベントを発行
-                    Debug.Log($"[PuzzleManager] 合成成功: {match.recipe.recipeName} -> {match.recipe.resultUnit.unitName}");
-                    OnUnitSynthesized?.Invoke(match.recipe.resultUnit);
                 }
 
-                // 少し待ってからアニメーション
-                yield return new WaitForSeconds(0.2f);
-
-                // ピースを落下させる
-                board.DropPieces();
-
-                yield return new WaitForSeconds(0.2f);
-
-                // 空いたスペースを補充する
-                board.FillBoard();
-
-                yield return new WaitForSeconds(0.3f);
+                // 上隣チェック
+                if (r + 1 < PuzzleBoard.SIZE && board.Grid[r + 1, c] != null)
+                {
+                    KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r + 1, c].Kanji);
+                    if (recipe != null)
+                    {
+                        return new CombineMatch(piece, board.Grid[r + 1, c], recipe);
+                    }
+                }
             }
+        }
 
-        } while (foundMatch); // 連鎖的にマッチがある限り繰り返す
+        return null;
+    }
+
+    /// <summary>
+    /// マッチするレシピを検索する
+    /// </summary>
+    private KanjiRecipe FindMatchingRecipe(string a, string b)
+    {
+        foreach (var recipe in recipes)
+        {
+            if (recipe.Matches(a, b))
+                return recipe;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 合体確認で「はい」が押された場合
+    /// </summary>
+    public void ConfirmCombine()
+    {
+        if (!waitingForConfirm) return;
+
+        StartCoroutine(ExecuteCombine());
+    }
+
+    /// <summary>
+    /// 合体確認で「いいえ」が押された場合
+    /// </summary>
+    public void CancelCombine()
+    {
+        if (!waitingForConfirm) return;
+
+        // ハイライト解除
+        if (pendingMatch.pieceA != null) pendingMatch.pieceA.SetSelected(false);
+        if (pendingMatch.pieceB != null) pendingMatch.pieceB.SetSelected(false);
+
+        waitingForConfirm = false;
+    }
+
+    /// <summary>
+    /// 合体実行コルーチン
+    /// </summary>
+    private IEnumerator ExecuteCombine()
+    {
+        isProcessing = true;
+        waitingForConfirm = false;
+
+        KanjiPiece pieceA = pendingMatch.pieceA;
+        KanjiPiece pieceB = pendingMatch.pieceB;
+        KanjiRecipe recipe = pendingMatch.recipe;
+
+        Debug.Log($"[PuzzleManager] 合体! {recipe.materialA} + {recipe.materialB} = {recipe.result} (+{recipe.score}点)");
+
+        // 素材ピースを消去
+        board.RemovePieceAt(pieceA.row, pieceA.col);
+        board.RemovePieceAt(pieceB.row, pieceB.col);
+
+        // スコア加算イベント発行
+        OnCombineSuccess?.Invoke(recipe);
+
+        yield return new WaitForSeconds(0.2f);
+
+        // 重力処理
+        board.DropPieces();
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 空きセルを補充
+        board.RefillEmptyCells();
+
+        yield return new WaitForSeconds(0.3f);
 
         isProcessing = false;
     }

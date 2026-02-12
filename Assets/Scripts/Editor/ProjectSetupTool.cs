@@ -1,45 +1,40 @@
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEditor;
+using TMPro;
 
 /// <summary>
-/// プロジェクトのシーンセットアップを自動実行するエディタツール
+/// 漢字合体パズルゲームのシーンセットアップを自動実行するエディタツール
 /// Tools > Setup Puzzle TD メニューから実行する
 /// </summary>
 public class ProjectSetupTool : Editor
 {
-    private const string SCRIPTABLE_OBJECTS_PATH = "Assets/ScriptableObjects";
-    private const string PREFABS_PATH = "Assets/Prefabs";
+    private const string SO_PATH = "Assets/ScriptableObjects";
+    private const string PREFAB_PATH = "Assets/Prefabs";
+    private const string FONT_PATH = "Assets/TextMesh Pro/Fonts/AppFont.otf";
+    private const string FONT_SDF_PATH = "Assets/TextMesh Pro/Fonts/AppFont SDF.asset";
 
     [MenuItem("Tools/Setup Puzzle TD")]
     public static void SetupScene()
     {
         if (!EditorUtility.DisplayDialog(
-            "Puzzle TD セットアップ",
+            "漢字合体パズル セットアップ",
             "シーンをセットアップします。\n既存のオブジェクトが削除される場合があります。\n続行しますか？",
             "はい", "いいえ"))
         {
             return;
         }
 
-        // フォルダ作成
         CreateFolders();
-
-        // ScriptableObjectアセットの作成
-        CreatePieceDataAssets();
-        CreateUnitDataAssets();
-        CreateRecipeDataAssets();
-
-        // プレハブの作成
+        CreateRecipeAssets();
         CreatePrefabs();
-
-        // シーンオブジェクトの構成
         SetupSceneObjects();
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
 
-        Debug.Log("=== Puzzle TD セットアップ完了 ===");
-        EditorUtility.DisplayDialog("完了", "Puzzle TD のセットアップが完了しました！", "OK");
+        Debug.Log("=== 漢字合体パズル セットアップ完了 ===");
+        EditorUtility.DisplayDialog("完了", "漢字合体パズルのセットアップが完了しました！\nPlayでゲームを開始できます。", "OK");
     }
 
     // ============================================================
@@ -47,439 +42,467 @@ public class ProjectSetupTool : Editor
     // ============================================================
     private static void CreateFolders()
     {
-        CreateFolderIfNotExists("Assets", "Scripts");
-        CreateFolderIfNotExists("Assets/Scripts", "Puzzle");
-        CreateFolderIfNotExists("Assets/Scripts", "TD");
-        CreateFolderIfNotExists("Assets/Scripts", "Data");
-        CreateFolderIfNotExists("Assets/Scripts", "Manager");
-        CreateFolderIfNotExists("Assets/Scripts", "Editor");
-        CreateFolderIfNotExists("Assets", "ScriptableObjects");
-        CreateFolderIfNotExists("Assets/ScriptableObjects", "Pieces");
-        CreateFolderIfNotExists("Assets/ScriptableObjects", "Units");
-        CreateFolderIfNotExists("Assets/ScriptableObjects", "Recipes");
-        CreateFolderIfNotExists("Assets", "Prefabs");
-        CreateFolderIfNotExists("Assets/Prefabs", "Puzzle");
-        CreateFolderIfNotExists("Assets/Prefabs", "Units");
-        CreateFolderIfNotExists("Assets/Prefabs", "Enemies");
-        CreateFolderIfNotExists("Assets", "Materials");
+        MakeFolder("Assets", "Scripts");
+        MakeFolder("Assets/Scripts", "Data");
+        MakeFolder("Assets/Scripts", "Puzzle");
+        MakeFolder("Assets/Scripts", "Manager");
+        MakeFolder("Assets/Scripts", "Editor");
+        MakeFolder("Assets", "ScriptableObjects");
+        MakeFolder("Assets/ScriptableObjects", "Recipes");
+        MakeFolder("Assets", "Prefabs");
+        MakeFolder("Assets/Prefabs", "Puzzle");
+        MakeFolder("Assets", "Materials");
     }
 
-    private static void CreateFolderIfNotExists(string parent, string folderName)
+    private static void MakeFolder(string parent, string name)
     {
-        string path = $"{parent}/{folderName}";
-        if (!AssetDatabase.IsValidFolder(path))
-        {
-            AssetDatabase.CreateFolder(parent, folderName);
-        }
+        if (!AssetDatabase.IsValidFolder($"{parent}/{name}"))
+            AssetDatabase.CreateFolder(parent, name);
     }
 
     // ============================================================
-    // ScriptableObject アセットの作成
+    // レシピアセット作成
     // ============================================================
-    private static void CreatePieceDataAssets()
+    private static void CreateRecipeAssets()
     {
-        CreatePieceData("Base", PieceType.Base, "台座", new Color(0.6f, 0.4f, 0.2f));
-        CreatePieceData("CannonTop", PieceType.CannonTop, "砲台", new Color(0.8f, 0.2f, 0.2f));
-        CreatePieceData("Engine", PieceType.Engine, "エンジン", new Color(0.2f, 0.6f, 0.8f));
-        CreatePieceData("Armor", PieceType.Armor, "装甲", new Color(0.5f, 0.5f, 0.5f));
-        CreatePieceData("Shield", PieceType.Shield, "シールド", new Color(0.2f, 0.8f, 0.4f));
-        CreatePieceData("Missile", PieceType.Missile, "ミサイル", new Color(0.9f, 0.6f, 0.1f));
+        CreateRecipe("Recipe_MokuMoku", "木", "木", "林", 100);
+        CreateRecipe("Recipe_RinMoku", "林", "木", "森", 200);
+        CreateRecipe("Recipe_NichiGetsu", "日", "月", "明", 150);
+        CreateRecipe("Recipe_KaKa", "火", "火", "炎", 100);
+        CreateRecipe("Recipe_JinJin", "人", "人", "从", 100);
     }
 
-    private static void CreatePieceData(string fileName, PieceType type, string displayName, Color color)
+    private static KanjiRecipe CreateRecipe(string fileName, string a, string b, string result, int score)
     {
-        string path = $"{SCRIPTABLE_OBJECTS_PATH}/Pieces/{fileName}.asset";
-        if (AssetDatabase.LoadAssetAtPath<PieceData>(path) != null) return;
+        string path = $"{SO_PATH}/Recipes/{fileName}.asset";
+        KanjiRecipe existing = AssetDatabase.LoadAssetAtPath<KanjiRecipe>(path);
+        if (existing != null) return existing;
 
-        PieceData data = ScriptableObject.CreateInstance<PieceData>();
-        data.pieceType = type;
-        data.displayName = displayName;
-        data.color = color;
-
-        AssetDatabase.CreateAsset(data, path);
-    }
-
-    private static void CreateUnitDataAssets()
-    {
-        CreateUnitData("BasicCannon", "基本キャノン", 3f, 1f, 15f);
-        CreateUnitData("MissileLauncher", "ミサイルランチャー", 5f, 2f, 40f);
-    }
-
-    private static void CreateUnitData(string fileName, string unitName, float range, float attackSpeed, float damage)
-    {
-        string path = $"{SCRIPTABLE_OBJECTS_PATH}/Units/{fileName}.asset";
-        if (AssetDatabase.LoadAssetAtPath<UnitData>(path) != null) return;
-
-        UnitData data = ScriptableObject.CreateInstance<UnitData>();
-        data.unitName = unitName;
-        data.range = range;
-        data.attackSpeed = attackSpeed;
-        data.damage = damage;
-
-        AssetDatabase.CreateAsset(data, path);
-    }
-
-    private static void CreateRecipeDataAssets()
-    {
-        // レシピ1: 台座 + 砲台（縦並び）→ 基本キャノン
-        UnitData cannonUnit = AssetDatabase.LoadAssetAtPath<UnitData>($"{SCRIPTABLE_OBJECTS_PATH}/Units/BasicCannon.asset");
-        CreateRecipeData("Recipe_BasicCannon", "基本キャノンの合成", 0, PatternType.Vertical2,
-            new PieceType[] { PieceType.Base, PieceType.CannonTop },
-            new Vector2Int[] { new Vector2Int(0, 0), new Vector2Int(0, 1) },
-            cannonUnit);
-
-        // レシピ2: 台座 + ミサイル（縦並び）→ ミサイルランチャー
-        UnitData missileUnit = AssetDatabase.LoadAssetAtPath<UnitData>($"{SCRIPTABLE_OBJECTS_PATH}/Units/MissileLauncher.asset");
-        CreateRecipeData("Recipe_MissileLauncher", "ミサイルランチャーの合成", 1, PatternType.Vertical2,
-            new PieceType[] { PieceType.Base, PieceType.Missile },
-            new Vector2Int[] { new Vector2Int(0, 0), new Vector2Int(0, 1) },
-            missileUnit);
-    }
-
-    private static void CreateRecipeData(string fileName, string recipeName, int priority,
-        PatternType patternType, PieceType[] requiredPieces, Vector2Int[] offsets, UnitData resultUnit)
-    {
-        string path = $"{SCRIPTABLE_OBJECTS_PATH}/Recipes/{fileName}.asset";
-        if (AssetDatabase.LoadAssetAtPath<RecipeData>(path) != null) return;
-
-        RecipeData data = ScriptableObject.CreateInstance<RecipeData>();
-        data.recipeName = recipeName;
-        data.priority = priority;
-        data.patternType = patternType;
-        data.requiredPieces = requiredPieces;
-        data.offsets = offsets;
-        data.resultUnit = resultUnit;
-
-        AssetDatabase.CreateAsset(data, path);
+        KanjiRecipe recipe = ScriptableObject.CreateInstance<KanjiRecipe>();
+        recipe.materialA = a;
+        recipe.materialB = b;
+        recipe.result = result;
+        recipe.score = score;
+        AssetDatabase.CreateAsset(recipe, path);
+        return recipe;
     }
 
     // ============================================================
-    // プレハブの作成
+    // プレハブ作成
     // ============================================================
     private static void CreatePrefabs()
     {
-        CreatePiecePrefab();
-        CreateUnitPrefab();
-        CreateEnemyPrefab();
+        CreateKanjiPiecePrefab();
     }
 
-    private static void CreatePiecePrefab()
+    private static void CreateKanjiPiecePrefab()
     {
-        string path = $"{PREFABS_PATH}/Puzzle/PiecePrefab.prefab";
+        string path = $"{PREFAB_PATH}/Puzzle/KanjiPiecePrefab.prefab";
         if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null) return;
 
-        GameObject go = new GameObject("PiecePrefab");
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = CreateDefaultSprite();
-        sr.sortingLayerName = "Default";
-        sr.sortingOrder = 1;
-        go.AddComponent<Piece>();
-        go.AddComponent<BoxCollider2D>();
+        // ルートオブジェクト
+        GameObject root = new GameObject("KanjiPiecePrefab");
 
-        PrefabUtility.SaveAsPrefabAsset(go, path);
-        Object.DestroyImmediate(go);
+        // 背景スプライト
+        SpriteRenderer bgRenderer = root.AddComponent<SpriteRenderer>();
+        bgRenderer.sprite = GetOrCreateSquareSprite();
+        bgRenderer.color = new Color(1f, 0.95f, 0.85f);
+        bgRenderer.sortingOrder = 0;
+        root.transform.localScale = new Vector3(1.3f, 1.3f, 1f);
+
+        // BoxCollider2D（クリック検出用）
+        BoxCollider2D col = root.AddComponent<BoxCollider2D>();
+        col.size = new Vector2(1f, 1f);
+
+        // 漢字テキスト（子オブジェクト）
+        GameObject textObj = new GameObject("KanjiText");
+        textObj.transform.SetParent(root.transform);
+        textObj.transform.localPosition = Vector3.zero;
+        textObj.transform.localScale = Vector3.one;
+
+        TextMeshPro tmp = textObj.AddComponent<TextMeshPro>();
+        tmp.text = "漢";
+        tmp.fontSize = 6f;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = new Color(0.15f, 0.1f, 0.05f);
+        tmp.sortingOrder = 1;
+
+        // AppFont SDFを適用
+        TMP_FontAsset fontSDF = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FONT_SDF_PATH);
+        if (fontSDF != null)
+        {
+            tmp.font = fontSDF;
+        }
+
+        // RectTransformの設定
+        RectTransform rt = textObj.GetComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(1f, 1f);
+
+        // KanjiPieceコンポーネント追加
+        KanjiPiece piece = root.AddComponent<KanjiPiece>();
+
+        // SerializedObjectでprivateフィールドを設定
+        AssetDatabase.SaveAssets();
+
+        // プレハブとして保存
+        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        Object.DestroyImmediate(root);
+
+        // プレハブ内のフィールドを設定
+        SetupPiecePrefabReferences(path);
     }
 
-    private static void CreateUnitPrefab()
+    private static void SetupPiecePrefabReferences(string prefabPath)
     {
-        string path = $"{PREFABS_PATH}/Units/UnitPrefab.prefab";
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null) return;
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        if (prefab == null) return;
 
-        GameObject go = new GameObject("UnitPrefab");
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = CreateDefaultSprite();
-        sr.color = Color.cyan;
-        sr.sortingOrder = 2;
-        go.AddComponent<UnitObject>();
+        KanjiPiece piece = prefab.GetComponent<KanjiPiece>();
+        SpriteRenderer bg = prefab.GetComponent<SpriteRenderer>();
+        TextMeshPro tmp = prefab.GetComponentInChildren<TextMeshPro>();
 
-        PrefabUtility.SaveAsPrefabAsset(go, path);
-        Object.DestroyImmediate(go);
+        if (piece != null)
+        {
+            SerializedObject so = new SerializedObject(piece);
+            so.FindProperty("kanjiText").objectReferenceValue = tmp;
+            so.FindProperty("background").objectReferenceValue = bg;
+            so.ApplyModifiedProperties();
+        }
     }
 
-    private static void CreateEnemyPrefab()
+    private static Sprite GetOrCreateSquareSprite()
     {
-        string path = $"{PREFABS_PATH}/Enemies/EnemyPrefab.prefab";
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null) return;
+        string texPath = "Assets/Materials/WhiteSquare.png";
+        Sprite existing = AssetDatabase.LoadAssetAtPath<Sprite>(texPath);
+        if (existing != null) return existing;
 
-        GameObject go = new GameObject("EnemyPrefab");
-        go.tag = "Enemy";
-        SpriteRenderer sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = CreateDefaultSprite();
-        sr.color = Color.red;
-        sr.sortingOrder = 2;
-        go.AddComponent<EnemyController>();
-        BoxCollider2D col = go.AddComponent<BoxCollider2D>();
-        col.isTrigger = true;
+        Texture2D tex = new Texture2D(64, 64);
+        Color[] pixels = new Color[64 * 64];
 
-        PrefabUtility.SaveAsPrefabAsset(go, path);
-        Object.DestroyImmediate(go);
-    }
+        // 角丸風の四角形
+        for (int y = 0; y < 64; y++)
+        {
+            for (int x = 0; x < 64; x++)
+            {
+                float dx = Mathf.Abs(x - 31.5f);
+                float dy = Mathf.Abs(y - 31.5f);
+                float cornerRadius = 8f;
+                float edgeDist = 27f;
 
-    /// <summary>
-    /// デフォルトの白い四角形スプライトを取得する
-    /// </summary>
-    private static Sprite CreateDefaultSprite()
-    {
-        // Unityビルトインの白テクスチャからスプライトを作成
-        Texture2D tex = new Texture2D(32, 32);
-        Color[] pixels = new Color[32 * 32];
-        for (int i = 0; i < pixels.Length; i++)
-            pixels[i] = Color.white;
+                if (dx > edgeDist && dy > edgeDist)
+                {
+                    float dist = Mathf.Sqrt((dx - edgeDist) * (dx - edgeDist) + (dy - edgeDist) * (dy - edgeDist));
+                    pixels[y * 64 + x] = dist <= cornerRadius ? Color.white : Color.clear;
+                }
+                else if (dx > edgeDist + cornerRadius || dy > edgeDist + cornerRadius)
+                {
+                    pixels[y * 64 + x] = Color.clear;
+                }
+                else
+                {
+                    pixels[y * 64 + x] = Color.white;
+                }
+            }
+        }
+
         tex.SetPixels(pixels);
         tex.Apply();
 
-        string texPath = "Assets/Materials/DefaultSquare.png";
-        if (AssetDatabase.LoadAssetAtPath<Texture2D>(texPath) == null)
-        {
-            System.IO.File.WriteAllBytes(
-                System.IO.Path.Combine(Application.dataPath, "Materials/DefaultSquare.png"),
-                tex.EncodeToPNG()
-            );
-            AssetDatabase.Refresh();
+        string fullPath = System.IO.Path.Combine(Application.dataPath, "Materials/WhiteSquare.png");
+        System.IO.File.WriteAllBytes(fullPath, tex.EncodeToPNG());
+        AssetDatabase.Refresh();
 
-            // テクスチャインポート設定
-            TextureImporter importer = AssetImporter.GetAtPath(texPath) as TextureImporter;
-            if (importer != null)
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spritePixelsPerUnit = 32;
-                importer.filterMode = FilterMode.Point;
-                importer.SaveAndReimport();
-            }
+        TextureImporter importer = AssetImporter.GetAtPath(texPath) as TextureImporter;
+        if (importer != null)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spritePixelsPerUnit = 64;
+            importer.filterMode = FilterMode.Bilinear;
+            importer.SaveAndReimport();
         }
 
         return AssetDatabase.LoadAssetAtPath<Sprite>(texPath);
     }
 
     // ============================================================
-    // シーンオブジェクトの構成
+    // シーンオブジェクト構成
     // ============================================================
     private static void SetupSceneObjects()
     {
-        // 既存のゲームオブジェクトを削除
-        DestroyExistingSetup();
+        DestroyExisting();
 
-        // --- GameManager ---
-        GameObject gameManagerGO = new GameObject("GameManager");
-        GameManager gameManager = gameManagerGO.AddComponent<GameManager>();
-
-        // --- パズル盤面 ---
-        GameObject puzzleRoot = new GameObject("PuzzleSystem");
-        puzzleRoot.transform.position = new Vector3(-2.5f, -4f, 0f);
-
-        PuzzleBoard puzzleBoard = puzzleRoot.AddComponent<PuzzleBoard>();
-        PuzzleManager puzzleManager = puzzleRoot.AddComponent<PuzzleManager>();
-        RecipeDatabase recipeDB = puzzleRoot.AddComponent<RecipeDatabase>();
-
-        // PuzzleBoard設定
-        SerializedObject boardSO = new SerializedObject(puzzleBoard);
-        boardSO.FindProperty("cellSize").floatValue = 1.0f;
-
-        // ピースプレハブを設定
-        GameObject piecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFABS_PATH}/Puzzle/PiecePrefab.prefab");
-        boardSO.FindProperty("piecePrefab").objectReferenceValue = piecePrefab;
-
-        // 利用可能なピースを設定
-        PieceData[] allPieces = LoadAllPieceData();
-        SerializedProperty availablePiecesProperty = boardSO.FindProperty("availablePieces");
-        availablePiecesProperty.arraySize = allPieces.Length;
-        for (int i = 0; i < allPieces.Length; i++)
-        {
-            availablePiecesProperty.GetArrayElementAtIndex(i).objectReferenceValue = allPieces[i];
-        }
-        boardSO.ApplyModifiedProperties();
-
-        // PuzzleManager設定
-        SerializedObject pmSO = new SerializedObject(puzzleManager);
-        pmSO.FindProperty("board").objectReferenceValue = puzzleBoard;
-        pmSO.FindProperty("recipeDatabase").objectReferenceValue = recipeDB;
-        pmSO.ApplyModifiedProperties();
-
-        // RecipeDatabase設定
-        RecipeData[] allRecipes = LoadAllRecipeData();
-        SerializedObject rdbSO = new SerializedObject(recipeDB);
-        SerializedProperty recipesProperty = rdbSO.FindProperty("recipes");
-        recipesProperty.arraySize = allRecipes.Length;
-        for (int i = 0; i < allRecipes.Length; i++)
-        {
-            recipesProperty.GetArrayElementAtIndex(i).objectReferenceValue = allRecipes[i];
-        }
-        rdbSO.ApplyModifiedProperties();
-
-        // --- TDフィールド ---
-        GameObject tdField = new GameObject("TDField");
-        tdField.transform.position = new Vector3(0f, 3f, 0f);
-
-        // UnitSpawner
-        UnitSpawner unitSpawner = tdField.AddComponent<UnitSpawner>();
-        SerializedObject usSO = new SerializedObject(unitSpawner);
-        usSO.FindProperty("puzzleManager").objectReferenceValue = puzzleManager;
-        usSO.FindProperty("placementAreaMin").vector2Value = new Vector2(-4f, 1.5f);
-        usSO.FindProperty("placementAreaMax").vector2Value = new Vector2(4f, 5f);
-
-        GameObject unitPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFABS_PATH}/Units/UnitPrefab.prefab");
-        usSO.FindProperty("defaultUnitPrefab").objectReferenceValue = unitPrefab;
-        usSO.ApplyModifiedProperties();
-
-        // --- 敵経路（Waypoints）---
-        GameObject waypointsParent = new GameObject("EnemyPath");
-        waypointsParent.transform.position = Vector3.zero;
-
-        Vector3[] waypointPositions = new Vector3[]
-        {
-            new Vector3(6f, 5f, 0f),   // スポーンポイント（右上）
-            new Vector3(3f, 5f, 0f),
-            new Vector3(3f, 3f, 0f),
-            new Vector3(-3f, 3f, 0f),
-            new Vector3(-3f, 5f, 0f),
-            new Vector3(-6f, 5f, 0f),  // ゴール（左上）
-        };
-
-        for (int i = 0; i < waypointPositions.Length; i++)
-        {
-            GameObject wp = new GameObject($"Waypoint_{i}");
-            wp.transform.parent = waypointsParent.transform;
-            wp.transform.position = waypointPositions[i];
-        }
-
-        // スポーンポイント
-        GameObject spawnPoint = new GameObject("EnemySpawnPoint");
-        spawnPoint.transform.position = waypointPositions[0];
-
-        // EnemySpawner
-        EnemySpawner enemySpawner = tdField.AddComponent<EnemySpawner>();
-        SerializedObject esSO = new SerializedObject(enemySpawner);
-        esSO.FindProperty("waypointsParent").objectReferenceValue = waypointsParent.transform;
-        esSO.FindProperty("spawnPoint").objectReferenceValue = spawnPoint.transform;
-        esSO.FindProperty("timeBetweenWaves").floatValue = 10f;
-
-        // ウェーブ設定
-        GameObject enemyPrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFABS_PATH}/Enemies/EnemyPrefab.prefab");
-        SerializedProperty wavesProperty = esSO.FindProperty("waves");
-        wavesProperty.arraySize = 2;
-
-        // ウェーブ1
-        SerializedProperty wave1 = wavesProperty.GetArrayElementAtIndex(0);
-        wave1.FindPropertyRelative("waveName").stringValue = "Wave 1";
-        SerializedProperty wave1Enemies = wave1.FindPropertyRelative("enemies");
-        wave1Enemies.arraySize = 1;
-        SerializedProperty w1e1 = wave1Enemies.GetArrayElementAtIndex(0);
-        w1e1.FindPropertyRelative("enemyPrefab").objectReferenceValue = enemyPrefab;
-        w1e1.FindPropertyRelative("count").intValue = 5;
-        w1e1.FindPropertyRelative("hp").floatValue = 50f;
-        w1e1.FindPropertyRelative("speed").floatValue = 2f;
-        w1e1.FindPropertyRelative("spawnInterval").floatValue = 2f;
-
-        // ウェーブ2
-        SerializedProperty wave2 = wavesProperty.GetArrayElementAtIndex(1);
-        wave2.FindPropertyRelative("waveName").stringValue = "Wave 2";
-        SerializedProperty wave2Enemies = wave2.FindPropertyRelative("enemies");
-        wave2Enemies.arraySize = 1;
-        SerializedProperty w2e1 = wave2Enemies.GetArrayElementAtIndex(0);
-        w2e1.FindPropertyRelative("enemyPrefab").objectReferenceValue = enemyPrefab;
-        w2e1.FindPropertyRelative("count").intValue = 8;
-        w2e1.FindPropertyRelative("hp").floatValue = 80f;
-        w2e1.FindPropertyRelative("speed").floatValue = 2.5f;
-        w2e1.FindPropertyRelative("spawnInterval").floatValue = 1.5f;
-
-        esSO.ApplyModifiedProperties();
-
-        // --- GameManager設定 ---
-        SerializedObject gmSO = new SerializedObject(gameManager);
-        gmSO.FindProperty("puzzleManager").objectReferenceValue = puzzleManager;
-        gmSO.FindProperty("enemySpawner").objectReferenceValue = enemySpawner;
-        gmSO.FindProperty("unitSpawner").objectReferenceValue = unitSpawner;
-        gmSO.ApplyModifiedProperties();
+        // フォントの読み込み
+        Font appFont = AssetDatabase.LoadAssetAtPath<Font>(FONT_PATH);
+        TMP_FontAsset fontSDF = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FONT_SDF_PATH);
 
         // --- カメラ設定 ---
         SetupCamera();
 
-        // --- 背景---
-        SetupBackground();
+        // --- パズルシステム ---
+        SetupPuzzleSystem(fontSDF);
 
-        Debug.Log("[ProjectSetupTool] シーンオブジェクトの構成完了");
+        // --- Canvas & UI ---
+        SetupUI(appFont, fontSDF);
+
+        Debug.Log("[ProjectSetupTool] シーンオブジェクト構成完了");
     }
 
-    private static void DestroyExistingSetup()
+    private static void DestroyExisting()
     {
-        string[] objectNames = { "GameManager", "PuzzleSystem", "TDField", "EnemyPath", "EnemySpawnPoint", "Background" };
-        foreach (string name in objectNames)
+        string[] names = { "GameManager", "PuzzleSystem", "Canvas", "EventSystem", "Background" };
+        foreach (string name in names)
         {
-            GameObject existing = GameObject.Find(name);
-            if (existing != null)
-            {
-                Object.DestroyImmediate(existing);
-            }
+            GameObject go = GameObject.Find(name);
+            if (go != null) Object.DestroyImmediate(go);
         }
-    }
-
-    private static PieceData[] LoadAllPieceData()
-    {
-        string[] guids = AssetDatabase.FindAssets("t:PieceData", new[] { $"{SCRIPTABLE_OBJECTS_PATH}/Pieces" });
-        PieceData[] pieces = new PieceData[guids.Length];
-        for (int i = 0; i < guids.Length; i++)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
-            pieces[i] = AssetDatabase.LoadAssetAtPath<PieceData>(path);
-        }
-        return pieces;
-    }
-
-    private static RecipeData[] LoadAllRecipeData()
-    {
-        string[] guids = AssetDatabase.FindAssets("t:RecipeData", new[] { $"{SCRIPTABLE_OBJECTS_PATH}/Recipes" });
-        RecipeData[] recipes = new RecipeData[guids.Length];
-        for (int i = 0; i < guids.Length; i++)
-        {
-            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
-            recipes[i] = AssetDatabase.LoadAssetAtPath<RecipeData>(path);
-        }
-        return recipes;
     }
 
     private static void SetupCamera()
     {
         Camera cam = Camera.main;
-        if (cam != null)
+
+        // カメラが存在しない場合は新規作成
+        if (cam == null)
         {
-            cam.transform.position = new Vector3(0f, 1f, -10f);
-            cam.orthographic = true;
-            cam.orthographicSize = 6f;
-            cam.backgroundColor = new Color(0.1f, 0.1f, 0.15f);
+            GameObject camGO = new GameObject("Main Camera");
+            camGO.tag = "MainCamera";
+            cam = camGO.AddComponent<Camera>();
+            camGO.AddComponent<AudioListener>();
+
+            // URP対応: UniversalAdditionalCameraDataを追加
+            var urpCamData = camGO.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+
+            Debug.Log("[ProjectSetupTool] Main Cameraを新規作成しました");
         }
+
+        cam.transform.position = new Vector3(0f, 0f, -10f);
+        cam.orthographic = true;
+        cam.orthographicSize = 5f;
+        cam.backgroundColor = new Color(0.95f, 0.92f, 0.85f);
+        cam.clearFlags = CameraClearFlags.SolidColor;
     }
 
-    private static void SetupBackground()
+    private static void SetupPuzzleSystem(TMP_FontAsset fontSDF)
     {
-        // パズルエリアの背景
-        GameObject bg = new GameObject("Background");
+        GameObject puzzleRoot = new GameObject("PuzzleSystem");
+        puzzleRoot.transform.position = new Vector3(0f, -0.5f, 0f);
 
-        GameObject puzzleBg = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        puzzleBg.name = "PuzzleBackground";
-        puzzleBg.transform.parent = bg.transform;
-        puzzleBg.transform.position = new Vector3(0.5f, -1.5f, 1f);
-        puzzleBg.transform.localScale = new Vector3(6.5f, 5.5f, 1f);
+        PuzzleBoard board = puzzleRoot.AddComponent<PuzzleBoard>();
+        PuzzleManager pm = puzzleRoot.AddComponent<PuzzleManager>();
 
-        Renderer puzzleBgRenderer = puzzleBg.GetComponent<Renderer>();
-        Material puzzleBgMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        puzzleBgMat.color = new Color(0.15f, 0.15f, 0.2f, 0.8f);
-        puzzleBgRenderer.material = puzzleBgMat;
+        // PuzzleBoard設定
+        SerializedObject boardSO = new SerializedObject(board);
+        boardSO.FindProperty("cellSize").floatValue = 1.5f;
+        boardSO.FindProperty("cellSpacing").floatValue = 0.15f;
 
-        // Colliderが不要なので削除
-        Object.DestroyImmediate(puzzleBg.GetComponent<MeshCollider>());
+        // ピースプレハブ
+        GameObject piecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFAB_PATH}/Puzzle/KanjiPiecePrefab.prefab");
+        boardSO.FindProperty("piecePrefab").objectReferenceValue = piecePrefab;
 
-        // TDフィールドの背景
-        GameObject tdBg = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        tdBg.name = "TDBackground";
-        tdBg.transform.parent = bg.transform;
-        tdBg.transform.position = new Vector3(0f, 3.5f, 1f);
-        tdBg.transform.localScale = new Vector3(12f, 5f, 1f);
+        // 漢字プール
+        SerializedProperty kanjiPoolProp = boardSO.FindProperty("kanjiPool");
+        string[] kanjiPool = { "木", "火", "日", "月", "人" };
+        kanjiPoolProp.arraySize = kanjiPool.Length;
+        for (int i = 0; i < kanjiPool.Length; i++)
+        {
+            kanjiPoolProp.GetArrayElementAtIndex(i).stringValue = kanjiPool[i];
+        }
+        boardSO.ApplyModifiedProperties();
 
-        Renderer tdBgRenderer = tdBg.GetComponent<Renderer>();
-        Material tdBgMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        tdBgMat.color = new Color(0.1f, 0.2f, 0.15f, 0.8f);
-        tdBgRenderer.material = tdBgMat;
+        // PuzzleManager設定
+        SerializedObject pmSO = new SerializedObject(pm);
+        pmSO.FindProperty("board").objectReferenceValue = board;
 
-        Object.DestroyImmediate(tdBg.GetComponent<MeshCollider>());
+        // レシピ設定
+        KanjiRecipe[] recipes = LoadAllRecipes();
+        SerializedProperty recipesProp = pmSO.FindProperty("recipes");
+        recipesProp.arraySize = recipes.Length;
+        for (int i = 0; i < recipes.Length; i++)
+        {
+            recipesProp.GetArrayElementAtIndex(i).objectReferenceValue = recipes[i];
+        }
+        pmSO.ApplyModifiedProperties();
+    }
+
+    private static void SetupUI(Font appFont, TMP_FontAsset fontSDF)
+    {
+        // EventSystem
+        if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
+        {
+            GameObject esGO = new GameObject("EventSystem");
+            esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
+            esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+        }
+
+        // Canvas
+        GameObject canvasGO = new GameObject("Canvas");
+        Canvas canvas = canvasGO.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 10;
+
+        CanvasScaler scaler = canvasGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080, 1920);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        canvasGO.AddComponent<GraphicRaycaster>();
+
+        // --- タイトル ---
+        CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
+            new Vector2(0, 400), new Vector2(600, 80),
+            48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
+
+        // --- スコア表示 ---
+        GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
+            new Vector2(0, 320), new Vector2(400, 60),
+            36, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+
+        // --- 確認パネル ---
+        GameObject confirmPanel = CreateConfirmPanel(canvasGO, fontSDF);
+
+        // --- GameManager ---
+        GameObject gmGO = new GameObject("GameManager");
+        GameManager gm = gmGO.AddComponent<GameManager>();
+
+        PuzzleManager pm = Object.FindFirstObjectByType<PuzzleManager>();
+        TextMeshProUGUI scoreTMP = scoreText.GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI infoTMP = confirmPanel.transform.Find("CombineInfoText")?.GetComponent<TextMeshProUGUI>();
+        Button yesBtn = confirmPanel.transform.Find("YesButton")?.GetComponent<Button>();
+        Button noBtn = confirmPanel.transform.Find("NoButton")?.GetComponent<Button>();
+
+        SerializedObject gmSO = new SerializedObject(gm);
+        gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
+        gmSO.FindProperty("scoreText").objectReferenceValue = scoreTMP;
+        gmSO.FindProperty("combineInfoText").objectReferenceValue = infoTMP;
+        gmSO.FindProperty("confirmPanel").objectReferenceValue = confirmPanel;
+        gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtn;
+        gmSO.FindProperty("confirmNoButton").objectReferenceValue = noBtn;
+        gmSO.ApplyModifiedProperties();
+
+        // --- 操作説明テキスト ---
+        CreateTMPText(canvasGO, "InstructionText", "漢字をクリックして選択 → 隣の漢字をクリックで入れ替え",
+            new Vector2(0, -420), new Vector2(700, 50),
+            22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
+    }
+
+    private static GameObject CreateConfirmPanel(GameObject canvas, TMP_FontAsset fontSDF)
+    {
+        // パネル背景
+        GameObject panelGO = new GameObject("ConfirmPanel");
+        panelGO.transform.SetParent(canvas.transform, false);
+
+        RectTransform panelRT = panelGO.AddComponent<RectTransform>();
+        panelRT.anchoredPosition = new Vector2(0, -250);
+        panelRT.sizeDelta = new Vector2(500, 250);
+
+        Image panelBg = panelGO.AddComponent<Image>();
+        panelBg.color = new Color(0.98f, 0.95f, 0.88f, 0.95f);
+
+        // アウトライン
+        Outline panelOutline = panelGO.AddComponent<Outline>();
+        panelOutline.effectColor = new Color(0.6f, 0.45f, 0.2f);
+        panelOutline.effectDistance = new Vector2(2, 2);
+
+        // 合体情報テキスト
+        CreateTMPText(panelGO, "CombineInfoText", "木 + 木 = 林\n(+100点)",
+            new Vector2(0, 40), new Vector2(450, 100),
+            32, fontSDF, new Color(0.2f, 0.15f, 0.05f), TextAlignmentOptions.Center);
+
+        // 「合体させますか？」テキスト
+        CreateTMPText(panelGO, "QuestionText", "合体させますか？",
+            new Vector2(0, -20), new Vector2(400, 40),
+            24, fontSDF, new Color(0.3f, 0.25f, 0.15f), TextAlignmentOptions.Center);
+
+        // 「はい」ボタン
+        CreateButton(panelGO, "YesButton", "はい",
+            new Vector2(-100, -80), new Vector2(150, 60),
+            fontSDF, new Color(0.3f, 0.7f, 0.4f), Color.white);
+
+        // 「いいえ」ボタン
+        CreateButton(panelGO, "NoButton", "いいえ",
+            new Vector2(100, -80), new Vector2(150, 60),
+            fontSDF, new Color(0.7f, 0.35f, 0.3f), Color.white);
+
+        panelGO.SetActive(false);
+        return panelGO;
+    }
+
+    private static GameObject CreateTMPText(GameObject parent, string name, string text,
+        Vector2 anchoredPos, Vector2 size, float fontSize,
+        TMP_FontAsset font, Color color, TextAlignmentOptions alignment)
+    {
+        GameObject go = new GameObject(name);
+        go.transform.SetParent(parent.transform, false);
+
+        TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.fontSize = fontSize;
+        tmp.alignment = alignment;
+        tmp.color = color;
+
+        if (font != null)
+            tmp.font = font;
+
+        RectTransform rt = go.GetComponent<RectTransform>();
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta = size;
+
+        return go;
+    }
+
+    private static GameObject CreateButton(GameObject parent, string name, string label,
+        Vector2 anchoredPos, Vector2 size, TMP_FontAsset font, Color bgColor, Color textColor)
+    {
+        GameObject btnGO = new GameObject(name);
+        btnGO.transform.SetParent(parent.transform, false);
+
+        RectTransform btnRT = btnGO.AddComponent<RectTransform>();
+        btnRT.anchoredPosition = anchoredPos;
+        btnRT.sizeDelta = size;
+
+        Image btnBg = btnGO.AddComponent<Image>();
+        btnBg.color = bgColor;
+
+        Button btn = btnGO.AddComponent<Button>();
+
+        // ボタンのホバーエフェクト
+        ColorBlock colors = btn.colors;
+        colors.normalColor = bgColor;
+        colors.highlightedColor = bgColor * 1.1f;
+        colors.pressedColor = bgColor * 0.85f;
+        btn.colors = colors;
+
+        // ボタン内テキスト
+        GameObject textGO = new GameObject("Text");
+        textGO.transform.SetParent(btnGO.transform, false);
+
+        TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
+        tmp.text = label;
+        tmp.fontSize = 28;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = textColor;
+
+        if (font != null)
+            tmp.font = font;
+
+        RectTransform textRT = textGO.GetComponent<RectTransform>();
+        textRT.anchorMin = Vector2.zero;
+        textRT.anchorMax = Vector2.one;
+        textRT.sizeDelta = Vector2.zero;
+        textRT.anchoredPosition = Vector2.zero;
+
+        return btnGO;
+    }
+
+    private static KanjiRecipe[] LoadAllRecipes()
+    {
+        string[] guids = AssetDatabase.FindAssets("t:KanjiRecipe", new[] { $"{SO_PATH}/Recipes" });
+        KanjiRecipe[] recipes = new KanjiRecipe[guids.Length];
+        for (int i = 0; i < guids.Length; i++)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            recipes[i] = AssetDatabase.LoadAssetAtPath<KanjiRecipe>(path);
+        }
+        return recipes;
     }
 }

@@ -1,23 +1,27 @@
 using UnityEngine;
 
 /// <summary>
-/// パズル盤面のデータ管理
-/// 6列×5行のグリッドにPieceを配置・操作する
+/// 3x3パズル盤面のデータ管理
+/// ピースの生成・入れ替え・重力落下・補充を担当
 /// </summary>
 public class PuzzleBoard : MonoBehaviour
 {
-    public const int COLS = 6;
-    public const int ROWS = 5;
+    public const int SIZE = 3;
 
     [Header("設定")]
-    [SerializeField] private float cellSize = 1.0f;
+    [SerializeField] private float cellSize = 1.5f;
+    [SerializeField] private float cellSpacing = 0.1f;
     [SerializeField] private GameObject piecePrefab;
-    [SerializeField] private PieceData[] availablePieces;
+
+    [Header("漢字プール")]
+    [Tooltip("ランダム生成に使用する漢字のリスト")]
+    [SerializeField] private string[] kanjiPool = { "木", "火", "日", "月", "人" };
 
     /// <summary>
     /// 盤面のグリッド配列 [row, col]
+    /// row=0が一番下、row=2が一番上
     /// </summary>
-    public Piece[,] Grid { get; private set; }
+    public KanjiPiece[,] Grid { get; private set; }
 
     /// <summary>
     /// セルサイズ
@@ -25,26 +29,21 @@ public class PuzzleBoard : MonoBehaviour
     public float CellSize => cellSize;
 
     /// <summary>
-    /// ピースのプレハブ
+    /// ピースプレハブ
     /// </summary>
     public GameObject PiecePrefab => piecePrefab;
 
     /// <summary>
-    /// 利用可能なピースデータ
+    /// 漢字プール
     /// </summary>
-    public PieceData[] AvailablePieces => availablePieces;
-
-    /// <summary>
-    /// 盤面の左下のワールド座標
-    /// </summary>
-    public Vector3 BoardOrigin => transform.position;
+    public string[] KanjiPool => kanjiPool;
 
     /// <summary>
     /// 盤面を初期化する
     /// </summary>
     public void InitializeBoard()
     {
-        Grid = new Piece[ROWS, COLS];
+        Grid = new KanjiPiece[SIZE, SIZE];
         ClearBoard();
         FillBoard();
     }
@@ -56,9 +55,9 @@ public class PuzzleBoard : MonoBehaviour
     {
         if (Grid == null) return;
 
-        for (int r = 0; r < ROWS; r++)
+        for (int r = 0; r < SIZE; r++)
         {
-            for (int c = 0; c < COLS; c++)
+            for (int c = 0; c < SIZE; c++)
             {
                 if (Grid[r, c] != null)
                 {
@@ -70,19 +69,19 @@ public class PuzzleBoard : MonoBehaviour
     }
 
     /// <summary>
-    /// 空のセルにランダムなピースを生成して埋める
+    /// 空のセルにランダムな漢字ピースを生成して埋める
     /// </summary>
     public void FillBoard()
     {
-        if (availablePieces == null || availablePieces.Length == 0)
+        if (kanjiPool == null || kanjiPool.Length == 0)
         {
-            Debug.LogWarning("PuzzleBoard: availablePiecesが設定されていません");
+            Debug.LogWarning("PuzzleBoard: kanjiPoolが設定されていません");
             return;
         }
 
-        for (int r = 0; r < ROWS; r++)
+        for (int r = 0; r < SIZE; r++)
         {
-            for (int c = 0; c < COLS; c++)
+            for (int c = 0; c < SIZE; c++)
             {
                 if (Grid[r, c] == null)
                 {
@@ -93,9 +92,9 @@ public class PuzzleBoard : MonoBehaviour
     }
 
     /// <summary>
-    /// 指定位置にランダムなピースを生成する
+    /// 指定位置にランダムな漢字ピースを生成する
     /// </summary>
-    public Piece SpawnPieceAt(int row, int col)
+    public KanjiPiece SpawnPieceAt(int row, int col, bool animateFromTop = false)
     {
         if (piecePrefab == null)
         {
@@ -103,18 +102,28 @@ public class PuzzleBoard : MonoBehaviour
             return null;
         }
 
-        PieceData randomData = availablePieces[Random.Range(0, availablePieces.Length)];
-        Vector3 worldPos = GridToWorldPosition(row, col);
+        string randomKanji = kanjiPool[Random.Range(0, kanjiPool.Length)];
+        Vector3 targetPos = GridToWorldPosition(row, col);
 
-        GameObject go = Instantiate(piecePrefab, worldPos, Quaternion.identity, transform);
-        go.name = $"Piece_{row}_{col}";
+        // 上からアニメーションする場合は、上方に生成
+        Vector3 spawnPos = animateFromTop
+            ? GridToWorldPosition(SIZE + 1, col)
+            : targetPos;
 
-        Piece piece = go.GetComponent<Piece>();
+        GameObject go = Instantiate(piecePrefab, spawnPos, Quaternion.identity, transform);
+        go.name = $"Kanji_{row}_{col}";
+
+        KanjiPiece piece = go.GetComponent<KanjiPiece>();
         if (piece == null)
-            piece = go.AddComponent<Piece>();
+            piece = go.AddComponent<KanjiPiece>();
 
-        piece.Initialize(randomData, row, col);
+        piece.Initialize(randomKanji, row, col);
         Grid[row, col] = piece;
+
+        if (animateFromTop)
+        {
+            piece.MoveTo(targetPos, 0.3f);
+        }
 
         return piece;
     }
@@ -124,20 +133,21 @@ public class PuzzleBoard : MonoBehaviour
     /// </summary>
     public void SwapPieces(int r1, int c1, int r2, int c2)
     {
-        Piece temp = Grid[r1, c1];
+        KanjiPiece temp = Grid[r1, c1];
         Grid[r1, c1] = Grid[r2, c2];
         Grid[r2, c2] = temp;
 
-        // 座標情報を更新
         if (Grid[r1, c1] != null)
         {
             Grid[r1, c1].row = r1;
             Grid[r1, c1].col = c1;
+            Grid[r1, c1].MoveTo(GridToWorldPosition(r1, c1));
         }
         if (Grid[r2, c2] != null)
         {
             Grid[r2, c2].row = r2;
             Grid[r2, c2].col = c2;
+            Grid[r2, c2].MoveTo(GridToWorldPosition(r2, c2));
         }
     }
 
@@ -154,25 +164,22 @@ public class PuzzleBoard : MonoBehaviour
     }
 
     /// <summary>
-    /// 空いたセルの上にあるピースを落下させる
+    /// 空きセルに対して上のピースを落下させる（重力処理）
     /// </summary>
     public void DropPieces()
     {
-        for (int c = 0; c < COLS; c++)
+        for (int c = 0; c < SIZE; c++)
         {
             int emptyRow = -1;
 
-            // 下から上にスキャン
-            for (int r = 0; r < ROWS; r++)
+            for (int r = 0; r < SIZE; r++)
             {
                 if (Grid[r, c] == null)
                 {
-                    if (emptyRow < 0)
-                        emptyRow = r;
+                    if (emptyRow < 0) emptyRow = r;
                 }
                 else if (emptyRow >= 0)
                 {
-                    // ピースを落下させる
                     Grid[emptyRow, c] = Grid[r, c];
                     Grid[r, c] = null;
 
@@ -187,23 +194,47 @@ public class PuzzleBoard : MonoBehaviour
     }
 
     /// <summary>
+    /// 空きセルを上からの新しいピースで補充する
+    /// </summary>
+    public void RefillEmptyCells()
+    {
+        for (int c = 0; c < SIZE; c++)
+        {
+            for (int r = 0; r < SIZE; r++)
+            {
+                if (Grid[r, c] == null)
+                {
+                    SpawnPieceAt(r, c, animateFromTop: true);
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// グリッド座標をワールド座標に変換する
-    /// 行0が一番下、列0が一番左
     /// </summary>
     public Vector3 GridToWorldPosition(int row, int col)
     {
-        float x = BoardOrigin.x + col * cellSize + cellSize * 0.5f;
-        float y = BoardOrigin.y + row * cellSize + cellSize * 0.5f;
+        float totalCellSize = cellSize + cellSpacing;
+        float offsetX = -(SIZE - 1) * totalCellSize / 2f;
+        float offsetY = -(SIZE - 1) * totalCellSize / 2f;
+
+        float x = transform.position.x + offsetX + col * totalCellSize;
+        float y = transform.position.y + offsetY + row * totalCellSize;
         return new Vector3(x, y, 0f);
     }
 
     /// <summary>
-    /// ワールド座標をグリッド座標に変換する
+    /// ワールド座標からグリッド座標を取得する
     /// </summary>
     public Vector2Int WorldToGridPosition(Vector3 worldPos)
     {
-        int col = Mathf.FloorToInt((worldPos.x - BoardOrigin.x) / cellSize);
-        int row = Mathf.FloorToInt((worldPos.y - BoardOrigin.y) / cellSize);
+        float totalCellSize = cellSize + cellSpacing;
+        float offsetX = -(SIZE - 1) * totalCellSize / 2f;
+        float offsetY = -(SIZE - 1) * totalCellSize / 2f;
+
+        int col = Mathf.RoundToInt((worldPos.x - transform.position.x - offsetX) / totalCellSize);
+        int row = Mathf.RoundToInt((worldPos.y - transform.position.y - offsetY) / totalCellSize);
         return new Vector2Int(row, col);
     }
 
@@ -212,6 +243,16 @@ public class PuzzleBoard : MonoBehaviour
     /// </summary>
     public bool IsValidPosition(int row, int col)
     {
-        return row >= 0 && row < ROWS && col >= 0 && col < COLS;
+        return row >= 0 && row < SIZE && col >= 0 && col < SIZE;
+    }
+
+    /// <summary>
+    /// 2つのセルが隣接しているか判定する（上下左右のみ）
+    /// </summary>
+    public bool AreAdjacent(int r1, int c1, int r2, int c2)
+    {
+        int dr = Mathf.Abs(r1 - r2);
+        int dc = Mathf.Abs(c1 - c2);
+        return (dr == 1 && dc == 0) || (dr == 0 && dc == 1);
     }
 }
