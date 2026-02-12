@@ -23,8 +23,9 @@ public struct CombinablePair
 
 /// <summary>
 /// パズル操作フロー統括
-/// 隣接する合体可能ペアの間に黒線を表示し、
-/// プレイヤーが2つのピースを順にクリックすると合体を実行する
+/// 全ピースの入れ替え操作（1ターン1手）、
+/// 隣接する合体可能ペアの黒線表示+振動演出、
+/// クリック合体を管理する
 /// </summary>
 public class PuzzleManager : MonoBehaviour
 {
@@ -33,17 +34,22 @@ public class PuzzleManager : MonoBehaviour
     [SerializeField] private KanjiRecipe[] recipes;
 
     [Header("線の設定")]
-    [SerializeField] private Color lineColor = Color.black;
-    [SerializeField] private float lineWidth = 0.08f;
+    [SerializeField] private float lineWidth = 0.06f;
 
     /// <summary>
     /// 合体成功イベント（スコア加算用）
     /// </summary>
     public event Action<KanjiRecipe> OnCombineSuccess;
 
+    /// <summary>
+    /// ターン経過イベント
+    /// </summary>
+    public event Action<int> OnTurnChanged;
+
     private KanjiPiece selectedPiece = null;
     private bool isProcessing = false;
     private Camera mainCamera;
+    private int turnCount = 0;
 
     // 合体可能ペアのリスト
     private List<CombinablePair> combinablePairs = new List<CombinablePair>();
@@ -51,10 +57,18 @@ public class PuzzleManager : MonoBehaviour
     // 黒線インジケータのリスト
     private List<GameObject> lineIndicators = new List<GameObject>();
 
+    // 線描画用のスプライト（ランタイムで生成）
+    private Sprite lineSprite;
+
     /// <summary>
     /// レシピ一覧
     /// </summary>
     public KanjiRecipe[] Recipes => recipes;
+
+    /// <summary>
+    /// 現在のターン数
+    /// </summary>
+    public int TurnCount => turnCount;
 
     private void Start()
     {
@@ -63,10 +77,27 @@ public class PuzzleManager : MonoBehaviour
         if (board == null)
             board = GetComponent<PuzzleBoard>();
 
+        // 線用のスプライトを生成
+        CreateLineSprite();
+
         board.InitializeBoard();
 
-        // 初期状態の合体可能ペアを検出
+        // 初期スキャン
         StartCoroutine(DelayedScan());
+    }
+
+    /// <summary>
+    /// 線描画用のスプライトをランタイムで生成
+    /// </summary>
+    private void CreateLineSprite()
+    {
+        Texture2D tex = new Texture2D(4, 4);
+        Color[] pixels = new Color[16];
+        for (int i = 0; i < 16; i++)
+            pixels[i] = Color.white;
+        tex.SetPixels(pixels);
+        tex.Apply();
+        lineSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
     }
 
     private IEnumerator DelayedScan()
@@ -79,7 +110,6 @@ public class PuzzleManager : MonoBehaviour
     {
         if (isProcessing) return;
 
-        // 新Input System でクリック検出
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             HandleClick();
@@ -110,38 +140,37 @@ public class PuzzleManager : MonoBehaviour
             return;
         }
 
-        // まだ選択していない場合
+        // まだ選択していない場合 → どのピースでも選択可能
         if (selectedPiece == null)
         {
-            // クリックしたピースが合体可能ペアの一部かチェック
-            if (IsPieceInCombinablePair(clickedPiece))
-            {
-                SelectPiece(clickedPiece);
-            }
+            SelectPiece(clickedPiece);
         }
         // 同じピースを再クリック → 選択解除
         else if (clickedPiece == selectedPiece)
         {
             DeselectCurrent();
         }
-        // 別のピースをクリック → 合体できるか判定
-        else
+        // 隣接ピースをクリック
+        else if (board.AreAdjacent(selectedPiece.row, selectedPiece.col, clickedPiece.row, clickedPiece.col))
         {
+            // 合体可能ペアかチェック
             CombinablePair? pair = FindPairBetween(selectedPiece, clickedPiece);
             if (pair.HasValue)
             {
-                // 合体実行: selectedPiece の位置が空欄、clickedPiece の位置に結果が出現
+                // 合体実行
                 StartCoroutine(ExecuteCombine(selectedPiece, clickedPiece, pair.Value.recipe));
             }
             else
             {
-                // 合体できない → 選択変更
-                DeselectCurrent();
-                if (IsPieceInCombinablePair(clickedPiece))
-                {
-                    SelectPiece(clickedPiece);
-                }
+                // 通常の入れ替え（1ターン消費）
+                StartCoroutine(ExecuteSwap(selectedPiece, clickedPiece));
             }
+        }
+        // 隣接でないピースをクリック → 選択変更
+        else
+        {
+            DeselectCurrent();
+            SelectPiece(clickedPiece);
         }
     }
 
@@ -161,12 +190,83 @@ public class PuzzleManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 盤面全体をスキャンし、合体可能なペアを検出して黒線を表示する
+    /// 通常の入れ替え（1ターン消費）
+    /// </summary>
+    private IEnumerator ExecuteSwap(KanjiPiece pieceA, KanjiPiece pieceB)
+    {
+        isProcessing = true;
+        DeselectCurrent();
+
+        // 入れ替え実行
+        board.SwapPieces(pieceA.row, pieceA.col, pieceB.row, pieceB.col);
+
+        // ターン加算
+        turnCount++;
+        OnTurnChanged?.Invoke(turnCount);
+        Debug.Log($"[PuzzleManager] ターン {turnCount}: 入れ替え実行");
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 再スキャン
+        ScanCombinablePairs();
+
+        isProcessing = false;
+    }
+
+    /// <summary>
+    /// 合体実行コルーチン
+    /// firstPiece: 最初にクリックしたピース（空欄になる）
+    /// secondPiece: 2番目にクリックしたピース（ここに結果が出現）
+    /// </summary>
+    private IEnumerator ExecuteCombine(KanjiPiece firstPiece, KanjiPiece secondPiece, KanjiRecipe recipe)
+    {
+        isProcessing = true;
+        DeselectCurrent();
+        ClearAllCombinableState();
+        ClearLineIndicators();
+
+        Debug.Log($"[PuzzleManager] 合体! {recipe.materialA} + {recipe.materialB} = {recipe.result} (+{recipe.score}点)");
+
+        int firstRow = firstPiece.row, firstCol = firstPiece.col;
+
+        // 最初のピースを削除（空欄になる）
+        board.RemovePieceAt(firstRow, firstCol);
+
+        // 2番目のピースの漢字を結果に変更
+        secondPiece.SetKanji(recipe.result);
+
+        // スコア加算
+        OnCombineSuccess?.Invoke(recipe);
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 重力処理
+        board.DropPieces();
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 空きセル補充
+        board.RefillEmptyCells();
+
+        yield return new WaitForSeconds(0.3f);
+
+        // 再スキャン
+        ScanCombinablePairs();
+
+        isProcessing = false;
+    }
+
+    // ============================================================
+    // 合体可能ペアのスキャンとインジケータ表示
+    // ============================================================
+
+    /// <summary>
+    /// 盤面全体をスキャンし、合体可能なペアを検出して黒線と振動を表示する
     /// </summary>
     public void ScanCombinablePairs()
     {
-        // 既存の線を削除
         ClearLineIndicators();
+        ClearAllCombinableState();
         combinablePairs.Clear();
 
         if (recipes == null || board.Grid == null) return;
@@ -184,9 +284,11 @@ public class PuzzleManager : MonoBehaviour
                     KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r, c + 1].Kanji);
                     if (recipe != null)
                     {
-                        CombinablePair pair = new CombinablePair(piece, board.Grid[r, c + 1], recipe);
-                        combinablePairs.Add(pair);
-                        CreateLineIndicator(piece, board.Grid[r, c + 1]);
+                        KanjiPiece otherPiece = board.Grid[r, c + 1];
+                        combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
+                        piece.SetCombinable(true);
+                        otherPiece.SetCombinable(true);
+                        CreateLineIndicator(piece, otherPiece, isHorizontal: true);
                     }
                 }
 
@@ -196,26 +298,38 @@ public class PuzzleManager : MonoBehaviour
                     KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, board.Grid[r + 1, c].Kanji);
                     if (recipe != null)
                     {
-                        CombinablePair pair = new CombinablePair(piece, board.Grid[r + 1, c], recipe);
-                        combinablePairs.Add(pair);
-                        CreateLineIndicator(piece, board.Grid[r + 1, c]);
+                        KanjiPiece otherPiece = board.Grid[r + 1, c];
+                        combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
+                        piece.SetCombinable(true);
+                        otherPiece.SetCombinable(true);
+                        CreateLineIndicator(piece, otherPiece, isHorizontal: false);
                     }
                 }
             }
         }
+
+        if (combinablePairs.Count > 0)
+        {
+            Debug.Log($"[PuzzleManager] 合体可能ペア: {combinablePairs.Count}組");
+        }
     }
 
     /// <summary>
-    /// 指定ピースが合体可能ペアに含まれているか
+    /// 全ピースの合体可能フラグをリセットする
     /// </summary>
-    private bool IsPieceInCombinablePair(KanjiPiece piece)
+    private void ClearAllCombinableState()
     {
-        foreach (var pair in combinablePairs)
+        if (board.Grid == null) return;
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
         {
-            if (pair.pieceA == piece || pair.pieceB == piece)
-                return true;
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
+            {
+                if (board.Grid[r, c] != null)
+                {
+                    board.Grid[r, c].SetCombinable(false);
+                }
+            }
         }
-        return false;
     }
 
     /// <summary>
@@ -250,36 +364,33 @@ public class PuzzleManager : MonoBehaviour
     /// <summary>
     /// 2つのピース間に黒線インジケータを作成する
     /// </summary>
-    private void CreateLineIndicator(KanjiPiece a, KanjiPiece b)
+    private void CreateLineIndicator(KanjiPiece a, KanjiPiece b, bool isHorizontal)
     {
+        if (lineSprite == null) return;
+
         Vector3 posA = board.GridToWorldPosition(a.row, a.col);
         Vector3 posB = board.GridToWorldPosition(b.row, b.col);
         Vector3 midPoint = (posA + posB) / 2f;
-        midPoint.z = -0.5f; // ピースの前面に表示
+        midPoint.z = -1f; // ピースの前面に表示
 
         GameObject lineObj = new GameObject("CombineLine");
         lineObj.transform.SetParent(transform);
         lineObj.transform.position = midPoint;
 
         SpriteRenderer sr = lineObj.AddComponent<SpriteRenderer>();
-        sr.color = lineColor;
-        sr.sortingOrder = 5;
+        sr.sprite = lineSprite;
+        sr.color = new Color(0.1f, 0.1f, 0.1f, 0.8f);
+        sr.sortingOrder = 10;
 
-        // Unityビルトインの白ピクセルスプライトを使用
-        sr.sprite = board.PiecePrefab.GetComponent<SpriteRenderer>()?.sprite;
-
-        // 線の方向とサイズを計算
-        bool isHorizontal = (a.row == b.row);
-        float distance = Vector3.Distance(posA, posB);
-        float lineLength = distance * 0.4f;
+        float gap = board.CellSize * 0.3f;
 
         if (isHorizontal)
         {
-            lineObj.transform.localScale = new Vector3(lineLength, lineWidth, 1f);
+            lineObj.transform.localScale = new Vector3(gap, lineWidth, 1f);
         }
         else
         {
-            lineObj.transform.localScale = new Vector3(lineWidth, lineLength, 1f);
+            lineObj.transform.localScale = new Vector3(lineWidth, gap, 1f);
         }
 
         lineIndicators.Add(lineObj);
@@ -295,48 +406,5 @@ public class PuzzleManager : MonoBehaviour
             if (line != null) Destroy(line);
         }
         lineIndicators.Clear();
-    }
-
-    /// <summary>
-    /// 合体実行コルーチン
-    /// firstPiece: 最初にクリックしたピース（空欄になる）
-    /// secondPiece: 2番目にクリックしたピース（ここに結果が出現）
-    /// </summary>
-    private IEnumerator ExecuteCombine(KanjiPiece firstPiece, KanjiPiece secondPiece, KanjiRecipe recipe)
-    {
-        isProcessing = true;
-        DeselectCurrent();
-        ClearLineIndicators();
-
-        int firstRow = firstPiece.row, firstCol = firstPiece.col;
-        int secondRow = secondPiece.row, secondCol = secondPiece.col;
-
-        Debug.Log($"[PuzzleManager] 合体! {recipe.materialA} + {recipe.materialB} = {recipe.result} (+{recipe.score}点)");
-
-        // 最初のピース（空欄になる方）を削除
-        board.RemovePieceAt(firstRow, firstCol);
-
-        // 2番目のピースの漢字を結果に変更
-        secondPiece.SetKanji(recipe.result);
-
-        // スコア加算イベント
-        OnCombineSuccess?.Invoke(recipe);
-
-        yield return new WaitForSeconds(0.3f);
-
-        // 重力処理
-        board.DropPieces();
-
-        yield return new WaitForSeconds(0.3f);
-
-        // 空きセル補充
-        board.RefillEmptyCells();
-
-        yield return new WaitForSeconds(0.3f);
-
-        // 再スキャン
-        ScanCombinablePairs();
-
-        isProcessing = false;
     }
 }

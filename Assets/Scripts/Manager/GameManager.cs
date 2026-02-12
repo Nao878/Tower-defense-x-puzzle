@@ -4,7 +4,7 @@ using TMPro;
 
 /// <summary>
 /// ゲーム全体の管理
-/// スコア管理とUI更新を行う
+/// スコア・ターン管理とUI更新を行う
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -15,6 +15,7 @@ public class GameManager : MonoBehaviour
 
     [Header("UI参照")]
     [SerializeField] private TextMeshProUGUI scoreText;
+    [SerializeField] private TextMeshProUGUI turnText;
     [SerializeField] private TextMeshProUGUI lastCombineText;
 
     /// <summary>
@@ -47,8 +48,10 @@ public class GameManager : MonoBehaviour
         if (puzzleManager != null)
         {
             puzzleManager.OnCombineSuccess += HandleCombineSuccess;
+            puzzleManager.OnTurnChanged += HandleTurnChanged;
         }
         UpdateScoreUI();
+        UpdateTurnUI(0);
     }
 
     /// <summary>
@@ -59,13 +62,20 @@ public class GameManager : MonoBehaviour
         currentScore += recipe.score;
         UpdateScoreUI();
 
-        // 最後の合体情報を表示
         if (lastCombineText != null)
         {
             lastCombineText.text = $"{recipe.materialA} + {recipe.materialB} = {recipe.result}  (+{recipe.score}点)";
         }
 
         Debug.Log($"[GameManager] スコア加算: +{recipe.score} (合計: {currentScore})");
+    }
+
+    /// <summary>
+    /// ターン変更時の処理
+    /// </summary>
+    private void HandleTurnChanged(int turn)
+    {
+        UpdateTurnUI(turn);
     }
 
     private void UpdateScoreUI()
@@ -77,11 +87,20 @@ public class GameManager : MonoBehaviour
         OnScoreChanged?.Invoke(currentScore);
     }
 
+    private void UpdateTurnUI(int turn)
+    {
+        if (turnText != null)
+        {
+            turnText.text = $"ターン: {turn}";
+        }
+    }
+
     private void OnDestroy()
     {
         if (puzzleManager != null)
         {
             puzzleManager.OnCombineSuccess -= HandleCombineSuccess;
+            puzzleManager.OnTurnChanged -= HandleTurnChanged;
         }
     }
 }

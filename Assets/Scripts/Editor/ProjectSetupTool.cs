@@ -350,22 +350,27 @@ public class ProjectSetupTool : Editor
 
         // タイトル
         CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
-            new Vector2(0, 400), new Vector2(600, 80),
+            new Vector2(0, 420), new Vector2(600, 80),
             48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
         // スコア表示
         GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
-            new Vector2(0, 320), new Vector2(400, 60),
-            36, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(-150, 350), new Vector2(300, 50),
+            32, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+
+        // ターン表示
+        GameObject turnText = CreateTMPText(canvasGO, "TurnText", "ターン: 0",
+            new Vector2(150, 350), new Vector2(300, 50),
+            32, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
         // 最後の合体情報
         GameObject lastCombineText = CreateTMPText(canvasGO, "LastCombineText", "",
-            new Vector2(0, 260), new Vector2(500, 50),
+            new Vector2(0, 290), new Vector2(500, 50),
             28, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
 
         // 操作説明
         CreateTMPText(canvasGO, "InstructionText",
-            "合体できるペアに黒線が表示されます\n一方をクリック → もう一方をクリックで合体！",
+            "ピースをクリックして選択 → 隣のピースをクリックで入れ替え\n振動しているペアをクリックで合体！",
             new Vector2(0, -400), new Vector2(700, 80),
             22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
@@ -375,11 +380,13 @@ public class ProjectSetupTool : Editor
 
         PuzzleManager pm = Object.FindFirstObjectByType<PuzzleManager>();
         TextMeshProUGUI scoreTMP = scoreText.GetComponent<TextMeshProUGUI>();
+        TextMeshProUGUI turnTMP = turnText.GetComponent<TextMeshProUGUI>();
         TextMeshProUGUI lastCombineTMP = lastCombineText.GetComponent<TextMeshProUGUI>();
 
         SerializedObject gmSO = new SerializedObject(gm);
         gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
         gmSO.FindProperty("scoreText").objectReferenceValue = scoreTMP;
+        gmSO.FindProperty("turnText").objectReferenceValue = turnTMP;
         gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineTMP;
         gmSO.ApplyModifiedProperties();
     }
