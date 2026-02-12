@@ -391,16 +391,10 @@ public class ProjectSetupTool : Editor
             new Vector2(0, -400), new Vector2(700, 80),
             22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
-        // ===== 常設リセットボタン（右上） =====
+        // ===== 常設リセットボタン（下部） =====
         GameObject resetBtnGO = CreateButton(canvasGO, "ResetButton", "リセット",
-            new Vector2(0, 0), new Vector2(160, 60),
+            new Vector2(0, -320), new Vector2(160, 60),
             fontSDF, new Color(0.5f, 0.5f, 0.55f), Color.white);
-
-        RectTransform resetRT = resetBtnGO.GetComponent<RectTransform>();
-        resetRT.anchorMin = new Vector2(1, 1);
-        resetRT.anchorMax = new Vector2(1, 1);
-        resetRT.pivot = new Vector2(1, 1);
-        resetRT.anchoredPosition = new Vector2(-20, -20);
 
         Image resetBtnImage = resetBtnGO.GetComponent<Image>();
         TextMeshProUGUI resetBtnLabel = resetBtnGO.GetComponentInChildren<TextMeshProUGUI>();
