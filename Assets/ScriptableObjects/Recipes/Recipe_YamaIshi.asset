@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5b7da300f85316041ae7d13b009bde3e, type: 3}
-  m_Name: Recipe_JinJin
+  m_Name: Recipe_YamaIshi
   m_EditorClassIdentifier: Assembly-CSharp::KanjiRecipe
-  materialA: "\u4EBA"
-  materialB: "\u4EBA"
-  result: "\u4ECE"
-  score: 100
+  materialA: "\u5C71"
+  materialB: "\u77F3"
+  result: "\u5CA9"
+  score: 150

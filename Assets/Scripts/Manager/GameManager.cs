@@ -1,11 +1,10 @@
 using System;
 using UnityEngine;
-using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
 /// ゲーム全体の管理
-/// スコア管理、合体確認フローのステート管理、UI更新
+/// スコア管理とUI更新を行う
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -16,10 +15,7 @@ public class GameManager : MonoBehaviour
 
     [Header("UI参照")]
     [SerializeField] private TextMeshProUGUI scoreText;
-    [SerializeField] private TextMeshProUGUI combineInfoText;
-    [SerializeField] private GameObject confirmPanel;
-    [SerializeField] private Button confirmYesButton;
-    [SerializeField] private Button confirmNoButton;
+    [SerializeField] private TextMeshProUGUI lastCombineText;
 
     /// <summary>
     /// スコア変更イベント
@@ -48,30 +44,11 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        // イベント接続
         if (puzzleManager != null)
         {
-            puzzleManager.OnCombineConfirmRequested += HandleCombineConfirmRequest;
             puzzleManager.OnCombineSuccess += HandleCombineSuccess;
         }
-
-        // ボタンイベント
-        if (confirmYesButton != null)
-            confirmYesButton.onClick.AddListener(OnConfirmYes);
-        if (confirmNoButton != null)
-            confirmNoButton.onClick.AddListener(OnConfirmNo);
-
-        // UI初期化
-        HideConfirmPanel();
         UpdateScoreUI();
-    }
-
-    /// <summary>
-    /// 合体確認リクエストを受け取った時の処理
-    /// </summary>
-    private void HandleCombineConfirmRequest(CombineMatch match)
-    {
-        ShowConfirmPanel(match);
     }
 
     /// <summary>
@@ -81,64 +58,16 @@ public class GameManager : MonoBehaviour
     {
         currentScore += recipe.score;
         UpdateScoreUI();
-        HideConfirmPanel();
+
+        // 最後の合体情報を表示
+        if (lastCombineText != null)
+        {
+            lastCombineText.text = $"{recipe.materialA} + {recipe.materialB} = {recipe.result}  (+{recipe.score}点)";
+        }
+
         Debug.Log($"[GameManager] スコア加算: +{recipe.score} (合計: {currentScore})");
     }
 
-    /// <summary>
-    /// 確認パネルを表示する
-    /// </summary>
-    private void ShowConfirmPanel(CombineMatch match)
-    {
-        if (confirmPanel != null)
-        {
-            confirmPanel.SetActive(true);
-        }
-
-        if (combineInfoText != null)
-        {
-            combineInfoText.text = $"{match.recipe.materialA} + {match.recipe.materialB} = {match.recipe.result}\n(+{match.recipe.score}点)";
-        }
-    }
-
-    /// <summary>
-    /// 確認パネルを非表示にする
-    /// </summary>
-    private void HideConfirmPanel()
-    {
-        if (confirmPanel != null)
-        {
-            confirmPanel.SetActive(false);
-        }
-    }
-
-    /// <summary>
-    /// 「はい」ボタンが押された
-    /// </summary>
-    private void OnConfirmYes()
-    {
-        HideConfirmPanel();
-        if (puzzleManager != null)
-        {
-            puzzleManager.ConfirmCombine();
-        }
-    }
-
-    /// <summary>
-    /// 「いいえ」ボタンが押された
-    /// </summary>
-    private void OnConfirmNo()
-    {
-        HideConfirmPanel();
-        if (puzzleManager != null)
-        {
-            puzzleManager.CancelCombine();
-        }
-    }
-
-    /// <summary>
-    /// スコアUIを更新する
-    /// </summary>
     private void UpdateScoreUI()
     {
         if (scoreText != null)
@@ -152,7 +81,6 @@ public class GameManager : MonoBehaviour
     {
         if (puzzleManager != null)
         {
-            puzzleManager.OnCombineConfirmRequested -= HandleCombineConfirmRequest;
             puzzleManager.OnCombineSuccess -= HandleCombineSuccess;
         }
     }

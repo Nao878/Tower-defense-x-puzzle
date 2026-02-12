@@ -61,22 +61,32 @@ public class ProjectSetupTool : Editor
     }
 
     // ============================================================
-    // レシピアセット作成
+    // レシピアセット作成（小学校レベルの漢字のみ使用）
     // ============================================================
     private static void CreateRecipeAssets()
     {
+        // 既存のレシピを削除して再生成
+        string[] oldGuids = AssetDatabase.FindAssets("t:KanjiRecipe", new[] { $"{SO_PATH}/Recipes" });
+        foreach (string guid in oldGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            AssetDatabase.DeleteAsset(path);
+        }
+
         CreateRecipe("Recipe_MokuMoku", "木", "木", "林", 100);
         CreateRecipe("Recipe_RinMoku", "林", "木", "森", 200);
         CreateRecipe("Recipe_NichiGetsu", "日", "月", "明", 150);
-        CreateRecipe("Recipe_KaKa", "火", "火", "炎", 100);
-        CreateRecipe("Recipe_JinJin", "人", "人", "从", 100);
+        CreateRecipe("Recipe_DenRyoku", "田", "力", "男", 150);
+        CreateRecipe("Recipe_JinMoku", "人", "木", "休", 150);
+        CreateRecipe("Recipe_YamaYama", "山", "山", "出", 100);
+        CreateRecipe("Recipe_YamaIshi", "山", "石", "岩", 150);
+        CreateRecipe("Recipe_RitsuNichi", "立", "日", "音", 150);
+        CreateRecipe("Recipe_KaDen", "火", "田", "畑", 150);
     }
 
     private static KanjiRecipe CreateRecipe(string fileName, string a, string b, string result, int score)
     {
         string path = $"{SO_PATH}/Recipes/{fileName}.asset";
-        KanjiRecipe existing = AssetDatabase.LoadAssetAtPath<KanjiRecipe>(path);
-        if (existing != null) return existing;
 
         KanjiRecipe recipe = ScriptableObject.CreateInstance<KanjiRecipe>();
         recipe.materialA = a;
@@ -98,7 +108,12 @@ public class ProjectSetupTool : Editor
     private static void CreateKanjiPiecePrefab()
     {
         string path = $"{PREFAB_PATH}/Puzzle/KanjiPiecePrefab.prefab";
-        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null) return;
+
+        // 既存プレハブがあれば削除して再生成
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) != null)
+        {
+            AssetDatabase.DeleteAsset(path);
+        }
 
         // ルートオブジェクト
         GameObject root = new GameObject("KanjiPiecePrefab");
@@ -141,11 +156,8 @@ public class ProjectSetupTool : Editor
         // KanjiPieceコンポーネント追加
         KanjiPiece piece = root.AddComponent<KanjiPiece>();
 
-        // SerializedObjectでprivateフィールドを設定
-        AssetDatabase.SaveAssets();
-
         // プレハブとして保存
-        GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+        PrefabUtility.SaveAsPrefabAsset(root, path);
         Object.DestroyImmediate(root);
 
         // プレハブ内のフィールドを設定
@@ -179,7 +191,6 @@ public class ProjectSetupTool : Editor
         Texture2D tex = new Texture2D(64, 64);
         Color[] pixels = new Color[64 * 64];
 
-        // 角丸風の四角形
         for (int y = 0; y < 64; y++)
         {
             for (int x = 0; x < 64; x++)
@@ -231,18 +242,11 @@ public class ProjectSetupTool : Editor
     {
         DestroyExisting();
 
-        // フォントの読み込み
-        Font appFont = AssetDatabase.LoadAssetAtPath<Font>(FONT_PATH);
         TMP_FontAsset fontSDF = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FONT_SDF_PATH);
 
-        // --- カメラ設定 ---
         SetupCamera();
-
-        // --- パズルシステム ---
         SetupPuzzleSystem(fontSDF);
-
-        // --- Canvas & UI ---
-        SetupUI(appFont, fontSDF);
+        SetupUI(fontSDF);
 
         Debug.Log("[ProjectSetupTool] シーンオブジェクト構成完了");
     }
@@ -261,7 +265,6 @@ public class ProjectSetupTool : Editor
     {
         Camera cam = Camera.main;
 
-        // カメラが存在しない場合は新規作成
         if (cam == null)
         {
             GameObject camGO = new GameObject("Main Camera");
@@ -269,8 +272,8 @@ public class ProjectSetupTool : Editor
             cam = camGO.AddComponent<Camera>();
             camGO.AddComponent<AudioListener>();
 
-            // URP対応: UniversalAdditionalCameraDataを追加
-            var urpCamData = camGO.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
+            // URP対応
+            camGO.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
 
             Debug.Log("[ProjectSetupTool] Main Cameraを新規作成しました");
         }
@@ -295,13 +298,12 @@ public class ProjectSetupTool : Editor
         boardSO.FindProperty("cellSize").floatValue = 1.5f;
         boardSO.FindProperty("cellSpacing").floatValue = 0.15f;
 
-        // ピースプレハブ
         GameObject piecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFAB_PATH}/Puzzle/KanjiPiecePrefab.prefab");
         boardSO.FindProperty("piecePrefab").objectReferenceValue = piecePrefab;
 
-        // 漢字プール
+        // 漢字プール（小学校レベルの漢字のみ、10種類）
         SerializedProperty kanjiPoolProp = boardSO.FindProperty("kanjiPool");
-        string[] kanjiPool = { "木", "火", "日", "月", "人" };
+        string[] kanjiPool = { "木", "火", "日", "月", "人", "田", "力", "山", "石", "立" };
         kanjiPoolProp.arraySize = kanjiPool.Length;
         for (int i = 0; i < kanjiPool.Length; i++)
         {
@@ -313,7 +315,6 @@ public class ProjectSetupTool : Editor
         SerializedObject pmSO = new SerializedObject(pm);
         pmSO.FindProperty("board").objectReferenceValue = board;
 
-        // レシピ設定
         KanjiRecipe[] recipes = LoadAllRecipes();
         SerializedProperty recipesProp = pmSO.FindProperty("recipes");
         recipesProp.arraySize = recipes.Length;
@@ -324,14 +325,14 @@ public class ProjectSetupTool : Editor
         pmSO.ApplyModifiedProperties();
     }
 
-    private static void SetupUI(Font appFont, TMP_FontAsset fontSDF)
+    private static void SetupUI(TMP_FontAsset fontSDF)
     {
-        // EventSystem
+        // EventSystem（新Input System対応）
         if (Object.FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
         {
             GameObject esGO = new GameObject("EventSystem");
             esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
-            esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            esGO.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
         }
 
         // Canvas
@@ -347,84 +348,40 @@ public class ProjectSetupTool : Editor
 
         canvasGO.AddComponent<GraphicRaycaster>();
 
-        // --- タイトル ---
+        // タイトル
         CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
             new Vector2(0, 400), new Vector2(600, 80),
             48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
-        // --- スコア表示 ---
+        // スコア表示
         GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
             new Vector2(0, 320), new Vector2(400, 60),
             36, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
-        // --- 確認パネル ---
-        GameObject confirmPanel = CreateConfirmPanel(canvasGO, fontSDF);
+        // 最後の合体情報
+        GameObject lastCombineText = CreateTMPText(canvasGO, "LastCombineText", "",
+            new Vector2(0, 260), new Vector2(500, 50),
+            28, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
 
-        // --- GameManager ---
+        // 操作説明
+        CreateTMPText(canvasGO, "InstructionText",
+            "合体できるペアに黒線が表示されます\n一方をクリック → もう一方をクリックで合体！",
+            new Vector2(0, -400), new Vector2(700, 80),
+            22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
+
+        // GameManager
         GameObject gmGO = new GameObject("GameManager");
         GameManager gm = gmGO.AddComponent<GameManager>();
 
         PuzzleManager pm = Object.FindFirstObjectByType<PuzzleManager>();
         TextMeshProUGUI scoreTMP = scoreText.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI infoTMP = confirmPanel.transform.Find("CombineInfoText")?.GetComponent<TextMeshProUGUI>();
-        Button yesBtn = confirmPanel.transform.Find("YesButton")?.GetComponent<Button>();
-        Button noBtn = confirmPanel.transform.Find("NoButton")?.GetComponent<Button>();
+        TextMeshProUGUI lastCombineTMP = lastCombineText.GetComponent<TextMeshProUGUI>();
 
         SerializedObject gmSO = new SerializedObject(gm);
         gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
         gmSO.FindProperty("scoreText").objectReferenceValue = scoreTMP;
-        gmSO.FindProperty("combineInfoText").objectReferenceValue = infoTMP;
-        gmSO.FindProperty("confirmPanel").objectReferenceValue = confirmPanel;
-        gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtn;
-        gmSO.FindProperty("confirmNoButton").objectReferenceValue = noBtn;
+        gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineTMP;
         gmSO.ApplyModifiedProperties();
-
-        // --- 操作説明テキスト ---
-        CreateTMPText(canvasGO, "InstructionText", "漢字をクリックして選択 → 隣の漢字をクリックで入れ替え",
-            new Vector2(0, -420), new Vector2(700, 50),
-            22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
-    }
-
-    private static GameObject CreateConfirmPanel(GameObject canvas, TMP_FontAsset fontSDF)
-    {
-        // パネル背景
-        GameObject panelGO = new GameObject("ConfirmPanel");
-        panelGO.transform.SetParent(canvas.transform, false);
-
-        RectTransform panelRT = panelGO.AddComponent<RectTransform>();
-        panelRT.anchoredPosition = new Vector2(0, -250);
-        panelRT.sizeDelta = new Vector2(500, 250);
-
-        Image panelBg = panelGO.AddComponent<Image>();
-        panelBg.color = new Color(0.98f, 0.95f, 0.88f, 0.95f);
-
-        // アウトライン
-        Outline panelOutline = panelGO.AddComponent<Outline>();
-        panelOutline.effectColor = new Color(0.6f, 0.45f, 0.2f);
-        panelOutline.effectDistance = new Vector2(2, 2);
-
-        // 合体情報テキスト
-        CreateTMPText(panelGO, "CombineInfoText", "木 + 木 = 林\n(+100点)",
-            new Vector2(0, 40), new Vector2(450, 100),
-            32, fontSDF, new Color(0.2f, 0.15f, 0.05f), TextAlignmentOptions.Center);
-
-        // 「合体させますか？」テキスト
-        CreateTMPText(panelGO, "QuestionText", "合体させますか？",
-            new Vector2(0, -20), new Vector2(400, 40),
-            24, fontSDF, new Color(0.3f, 0.25f, 0.15f), TextAlignmentOptions.Center);
-
-        // 「はい」ボタン
-        CreateButton(panelGO, "YesButton", "はい",
-            new Vector2(-100, -80), new Vector2(150, 60),
-            fontSDF, new Color(0.3f, 0.7f, 0.4f), Color.white);
-
-        // 「いいえ」ボタン
-        CreateButton(panelGO, "NoButton", "いいえ",
-            new Vector2(100, -80), new Vector2(150, 60),
-            fontSDF, new Color(0.7f, 0.35f, 0.3f), Color.white);
-
-        panelGO.SetActive(false);
-        return panelGO;
     }
 
     private static GameObject CreateTMPText(GameObject parent, string name, string text,
@@ -448,50 +405,6 @@ public class ProjectSetupTool : Editor
         rt.sizeDelta = size;
 
         return go;
-    }
-
-    private static GameObject CreateButton(GameObject parent, string name, string label,
-        Vector2 anchoredPos, Vector2 size, TMP_FontAsset font, Color bgColor, Color textColor)
-    {
-        GameObject btnGO = new GameObject(name);
-        btnGO.transform.SetParent(parent.transform, false);
-
-        RectTransform btnRT = btnGO.AddComponent<RectTransform>();
-        btnRT.anchoredPosition = anchoredPos;
-        btnRT.sizeDelta = size;
-
-        Image btnBg = btnGO.AddComponent<Image>();
-        btnBg.color = bgColor;
-
-        Button btn = btnGO.AddComponent<Button>();
-
-        // ボタンのホバーエフェクト
-        ColorBlock colors = btn.colors;
-        colors.normalColor = bgColor;
-        colors.highlightedColor = bgColor * 1.1f;
-        colors.pressedColor = bgColor * 0.85f;
-        btn.colors = colors;
-
-        // ボタン内テキスト
-        GameObject textGO = new GameObject("Text");
-        textGO.transform.SetParent(btnGO.transform, false);
-
-        TextMeshProUGUI tmp = textGO.AddComponent<TextMeshProUGUI>();
-        tmp.text = label;
-        tmp.fontSize = 28;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = textColor;
-
-        if (font != null)
-            tmp.font = font;
-
-        RectTransform textRT = textGO.GetComponent<RectTransform>();
-        textRT.anchorMin = Vector2.zero;
-        textRT.anchorMax = Vector2.one;
-        textRT.sizeDelta = Vector2.zero;
-        textRT.anchoredPosition = Vector2.zero;
-
-        return btnGO;
     }
 
     private static KanjiRecipe[] LoadAllRecipes()
