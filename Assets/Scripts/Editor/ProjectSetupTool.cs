@@ -350,23 +350,29 @@ public class ProjectSetupTool : Editor
 
         // タイトル
         CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
-            new Vector2(0, 420), new Vector2(600, 80),
+            new Vector2(0, 440), new Vector2(600, 80),
             48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
-        // スコア表示
-        GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
-            new Vector2(-150, 350), new Vector2(300, 50),
-            32, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+        // 基本スコア表示
+        GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "基本スコア: 0",
+            new Vector2(-200, 380), new Vector2(350, 40),
+            26, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
         // ターン表示
         GameObject turnText = CreateTMPText(canvasGO, "TurnText", "ターン: 0",
-            new Vector2(150, 350), new Vector2(300, 50),
-            32, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(200, 380), new Vector2(300, 40),
+            26, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+
+        // トータルスコア表示
+        GameObject totalScoreText = CreateTMPText(canvasGO, "TotalScoreText",
+            "トータル: 5000  (ボーナス: 5000)",
+            new Vector2(0, 340), new Vector2(600, 40),
+            28, fontSDF, new Color(0.8f, 0.4f, 0.0f), TextAlignmentOptions.Center);
 
         // 最後の合体情報
         GameObject lastCombineText = CreateTMPText(canvasGO, "LastCombineText", "",
-            new Vector2(0, 290), new Vector2(500, 50),
-            28, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(0, 300), new Vector2(550, 40),
+            24, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
 
         // 操作説明
         CreateTMPText(canvasGO, "InstructionText",
@@ -374,28 +380,82 @@ public class ProjectSetupTool : Editor
             new Vector2(0, -400), new Vector2(700, 80),
             22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
-        // リセットボタン（デッドロック時に表示）
+        // ===== 常設リセットボタン（右上） =====
         GameObject resetBtnGO = CreateButton(canvasGO, "ResetButton", "リセット",
-            new Vector2(0, -300), new Vector2(200, 60),
-            fontSDF, new Color(0.8f, 0.3f, 0.2f), Color.white);
-        resetBtnGO.SetActive(false);
+            new Vector2(0, 0), new Vector2(160, 60),
+            fontSDF, new Color(0.5f, 0.5f, 0.55f), Color.white);
 
-        // GameManager
+        // 右上にアンカー配置
+        RectTransform resetRT = resetBtnGO.GetComponent<RectTransform>();
+        resetRT.anchorMin = new Vector2(1, 1);
+        resetRT.anchorMax = new Vector2(1, 1);
+        resetRT.pivot = new Vector2(1, 1);
+        resetRT.anchoredPosition = new Vector2(-20, -20);
+
+        Image resetBtnImage = resetBtnGO.GetComponent<Image>();
+        TextMeshProUGUI resetBtnLabel = resetBtnGO.GetComponentInChildren<TextMeshProUGUI>();
+
+        // ===== 確認ダイアログパネル =====
+        // 半透明背景
+        GameObject confirmPanel = new GameObject("ConfirmResetPanel");
+        confirmPanel.transform.SetParent(canvasGO.transform, false);
+
+        RectTransform cpRT = confirmPanel.AddComponent<RectTransform>();
+        cpRT.anchorMin = Vector2.zero;
+        cpRT.anchorMax = Vector2.one;
+        cpRT.sizeDelta = Vector2.zero;
+
+        Image cpBg = confirmPanel.AddComponent<Image>();
+        cpBg.color = new Color(0, 0, 0, 0.5f);
+
+        // ダイアログボックス
+        GameObject dialogBox = new GameObject("DialogBox");
+        dialogBox.transform.SetParent(confirmPanel.transform, false);
+
+        RectTransform dbRT = dialogBox.AddComponent<RectTransform>();
+        dbRT.anchoredPosition = Vector2.zero;
+        dbRT.sizeDelta = new Vector2(500, 250);
+
+        Image dbBg = dialogBox.AddComponent<Image>();
+        dbBg.color = new Color(0.95f, 0.92f, 0.88f);
+
+        // ダイアログテキスト
+        GameObject confirmTextGO = CreateTMPText(dialogBox, "ConfirmText",
+            "盤面を入れ替えますか？\n（ペナルティ: +5ターン）",
+            new Vector2(0, 30), new Vector2(450, 130),
+            26, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
+
+        // はいボタン
+        GameObject yesBtnGO = CreateButton(dialogBox, "YesButton", "はい",
+            new Vector2(-90, -80), new Vector2(140, 50),
+            fontSDF, new Color(0.2f, 0.6f, 0.3f), Color.white);
+
+        // いいえボタン
+        GameObject noBtnGO = CreateButton(dialogBox, "NoButton", "いいえ",
+            new Vector2(90, -80), new Vector2(140, 50),
+            fontSDF, new Color(0.6f, 0.3f, 0.2f), Color.white);
+
+        confirmPanel.SetActive(false);
+
+        // ===== GameManager =====
         GameObject gmGO = new GameObject("GameManager");
         GameManager gm = gmGO.AddComponent<GameManager>();
 
         PuzzleManager pm = Object.FindFirstObjectByType<PuzzleManager>();
-        TextMeshProUGUI scoreTMP = scoreText.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI turnTMP = turnText.GetComponent<TextMeshProUGUI>();
-        TextMeshProUGUI lastCombineTMP = lastCombineText.GetComponent<TextMeshProUGUI>();
-        Button resetBtn = resetBtnGO.GetComponent<Button>();
 
         SerializedObject gmSO = new SerializedObject(gm);
         gmSO.FindProperty("puzzleManager").objectReferenceValue = pm;
-        gmSO.FindProperty("scoreText").objectReferenceValue = scoreTMP;
-        gmSO.FindProperty("turnText").objectReferenceValue = turnTMP;
-        gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineTMP;
-        gmSO.FindProperty("resetButton").objectReferenceValue = resetBtn;
+        gmSO.FindProperty("scoreText").objectReferenceValue = scoreText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("turnText").objectReferenceValue = turnText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("totalScoreText").objectReferenceValue = totalScoreText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineText.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("resetButton").objectReferenceValue = resetBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("resetButtonLabel").objectReferenceValue = resetBtnLabel;
+        gmSO.FindProperty("resetButtonImage").objectReferenceValue = resetBtnImage;
+        gmSO.FindProperty("confirmResetPanel").objectReferenceValue = confirmPanel;
+        gmSO.FindProperty("confirmResetText").objectReferenceValue = confirmTextGO.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("confirmNoButton").objectReferenceValue = noBtnGO.GetComponent<Button>();
         gmSO.ApplyModifiedProperties();
     }
 
