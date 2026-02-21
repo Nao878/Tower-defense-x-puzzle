@@ -73,8 +73,8 @@ public class ProjectSetupTool : Editor
             AssetDatabase.DeleteAsset(path);
         }
 
+        // ===== 既存レシピ（基本） =====
         CreateRecipe("Recipe_MokuMoku", "木", "木", "林", 100);
-        CreateRecipe("Recipe_RinMoku", "林", "木", "森", 200);
         CreateRecipe("Recipe_NichiGetsu", "日", "月", "明", 150);
         CreateRecipe("Recipe_DenRyoku", "田", "力", "男", 150);
         CreateRecipe("Recipe_JinMoku", "人", "木", "休", 150);
@@ -82,6 +82,38 @@ public class ProjectSetupTool : Editor
         CreateRecipe("Recipe_YamaIshi", "山", "石", "岩", 150);
         CreateRecipe("Recipe_RitsuNichi", "立", "日", "音", 150);
         CreateRecipe("Recipe_KaDen", "火", "田", "畑", 150);
+
+        // ===== 第1段階：基本素材同士の新レシピ =====
+        // 人 (Person) 起点
+        CreateRecipe("Recipe_JinSan", "人", "山", "仙", 150);
+        CreateRecipe("Recipe_JinRitsu", "人", "立", "位", 150);
+        CreateRecipe("Recipe_JinDen", "人", "田", "佃", 150);
+
+        // 木 (Tree) 起点
+        CreateRecipe("Recipe_MokuSan", "木", "山", "杣", 150);
+        CreateRecipe("Recipe_MokuSeki", "木", "石", "柘", 150);
+        CreateRecipe("Recipe_MokuNichi", "木", "日", "杲", 150);
+        CreateRecipe("Recipe_MokuDen", "木", "田", "果", 200);
+
+        // 月 (Moon/Flesh) 起点
+        CreateRecipe("Recipe_GetsuRyoku", "月", "力", "肋", 150);
+        CreateRecipe("Recipe_GetsuDen", "月", "田", "胃", 200);
+        CreateRecipe("Recipe_GetsuGetsu", "月", "月", "朋", 100);
+
+        // 日 (Sun) 起点
+        CreateRecipe("Recipe_NichiRitsu", "日", "立", "昱", 150);
+        CreateRecipe("Recipe_NichiNichi", "日", "日", "昌", 100);
+
+        // 火 (Fire) 起点
+        CreateRecipe("Recipe_KaKa", "火", "火", "炎", 100);
+
+        // ===== 第2段階：進化合体（3ピース分の価値） =====
+        CreateRecipe("Recipe_RinMoku", "林", "木", "森", 300);
+        CreateRecipe("Recipe_ShouNichi", "昌", "日", "晶", 300);
+        CreateRecipe("Recipe_EnMoku", "炎", "木", "焚", 300);
+        CreateRecipe("Recipe_OnNichi", "音", "日", "暗", 300);
+        CreateRecipe("Recipe_GetsuShutsu", "月", "出", "朏", 300);
+        CreateRecipe("Recipe_MokuShou", "木", "昌", "椙", 300);
     }
 
     private static KanjiRecipe CreateRecipe(string fileName, string a, string b, string result, int score)
