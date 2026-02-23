@@ -397,8 +397,18 @@ public class ProjectSetupTool : Editor
 
         // タイトル
         CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
-            new Vector2(-300, 240), new Vector2(400, 50),
+            new Vector2(-300, 210), new Vector2(400, 50),
             36, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
+
+        // モードラベル（右上）
+        GameObject modeLabelGO = CreateTMPText(canvasGO, "ModeLabel", "",
+            new Vector2(0, 0), new Vector2(150, 30),
+            20, fontSDF, new Color(0.1f, 0.5f, 0.8f), TextAlignmentOptions.Right);
+        RectTransform mlRT = modeLabelGO.GetComponent<RectTransform>();
+        mlRT.anchorMin = new Vector2(1, 1);
+        mlRT.anchorMax = new Vector2(1, 1);
+        mlRT.pivot = new Vector2(1, 1);
+        mlRT.anchoredPosition = new Vector2(-10, -10);
 
         // タイマー表示（右上）
         GameObject timeText = CreateTMPText(canvasGO, "TimeText", "Time: 60.00",
@@ -522,6 +532,51 @@ public class ProjectSetupTool : Editor
 
         gameOverPanel.SetActive(false);
 
+        // ===== タイトル画面パネル =====
+        GameObject titlePanel = new GameObject("TitlePanel");
+        titlePanel.transform.SetParent(canvasGO.transform, false);
+
+        RectTransform tpRT = titlePanel.AddComponent<RectTransform>();
+        tpRT.anchorMin = Vector2.zero;
+        tpRT.anchorMax = Vector2.one;
+        tpRT.sizeDelta = Vector2.zero;
+
+        Image tpBg = titlePanel.AddComponent<Image>();
+        tpBg.color = new Color(0.95f, 0.92f, 0.85f, 0.95f);
+
+        // タイトルテキスト
+        CreateTMPText(titlePanel, "TitleMainText", "漢字合体パズル",
+            new Vector2(0, 100), new Vector2(500, 70),
+            48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
+
+        // Classicモードボタン
+        GameObject classicBtnGO = CreateButton(titlePanel, "ClassicModeButton",
+            "1マス入替モード",
+            new Vector2(-120, -10), new Vector2(200, 70),
+            fontSDF, new Color(0.2f, 0.55f, 0.35f), Color.white);
+
+        // Classicハイスコア
+        GameObject titleClassicHS = CreateTMPText(titlePanel, "TitleClassicHS", "Best: 0",
+            new Vector2(-120, -60), new Vector2(200, 25),
+            18, fontSDF, new Color(0.6f, 0.45f, 0.0f), TextAlignmentOptions.Center);
+
+        // Actionモードボタン
+        GameObject actionBtnGO = CreateButton(titlePanel, "ActionModeButton",
+            "自由移動モード",
+            new Vector2(120, -10), new Vector2(200, 70),
+            fontSDF, new Color(0.5f, 0.2f, 0.7f), Color.white);
+
+        // Actionハイスコア
+        GameObject titleActionHS = CreateTMPText(titlePanel, "TitleActionHS", "Best: 0",
+            new Vector2(120, -60), new Vector2(200, 25),
+            18, fontSDF, new Color(0.6f, 0.45f, 0.0f), TextAlignmentOptions.Center);
+
+        // 説明テキスト
+        CreateTMPText(titlePanel, "TitleDesc",
+            "Classic: スワイプで隣接1マス入替  /  Action: 自由にドラッグで入替",
+            new Vector2(0, -120), new Vector2(600, 30),
+            16, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
+
         // ===== パーティクルシステム =====
         GameObject particleGO = new GameObject("MergeParticle");
         particleGO.transform.position = Vector3.zero;
@@ -582,6 +637,12 @@ public class ProjectSetupTool : Editor
         gmSO.FindProperty("retryButton").objectReferenceValue = retryBtnGO.GetComponent<Button>();
         gmSO.FindProperty("highScoreText").objectReferenceValue = highScoreTextGO.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("mergeParticle").objectReferenceValue = ps;
+        gmSO.FindProperty("titlePanel").objectReferenceValue = titlePanel;
+        gmSO.FindProperty("classicModeButton").objectReferenceValue = classicBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("actionModeButton").objectReferenceValue = actionBtnGO.GetComponent<Button>();
+        gmSO.FindProperty("titleClassicHighScore").objectReferenceValue = titleClassicHS.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("titleActionHighScore").objectReferenceValue = titleActionHS.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("modeLabel").objectReferenceValue = modeLabelGO.GetComponent<TextMeshProUGUI>();
         gmSO.ApplyModifiedProperties();
     }
 
