@@ -11,8 +11,8 @@ public class ProjectSetupTool : Editor
 {
     private const string SO_PATH = "Assets/ScriptableObjects";
     private const string PREFAB_PATH = "Assets/Prefabs";
-    private const string FONT_PATH = "Assets/TextMesh Pro/Fonts/AppFont.otf";
-    private const string FONT_SDF_PATH = "Assets/TextMesh Pro/Fonts/AppFont SDF.asset";
+    private const string FONT_PATH = "Assets/TextMesh Pro/Fonts/NotoSansJP-Bold.ttf";
+    private const string FONT_SDF_PATH = "Assets/TextMesh Pro/Fonts/NotoSansJP-Bold SDF.asset";
 
     [MenuItem("Tools/Setup Puzzle TD")]
     public static void SetupScene()
