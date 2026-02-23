@@ -5,65 +5,54 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 合体可能ペア情報
+/// マッチ情報
 /// </summary>
-public struct CombinablePair
+public struct MatchInfo
 {
-    public KanjiPiece pieceA;
-    public KanjiPiece pieceB;
-    public KanjiRecipe recipe;
-    public bool isElimination;
-    public int eliminationScore;
-
-    public CombinablePair(KanjiPiece a, KanjiPiece b, KanjiRecipe r)
-    {
-        pieceA = a; pieceB = b; recipe = r;
-        isElimination = false; eliminationScore = 0;
-    }
-
-    public CombinablePair(KanjiPiece a, KanjiPiece b, int score)
-    {
-        pieceA = a; pieceB = b; recipe = null;
-        isElimination = true; eliminationScore = score;
-    }
+    public List<Vector2Int> positions;
+    public KanjiRecipe recipe;       // レシピマッチの場合
+    public string resultKanji;       // 結果漢字
+    public int score;
+    public bool isRecipeMatch;       // レシピマッチか同種並びか
+    public bool isElimination;       // 終端漢字消去
 }
 
 /// <summary>
-/// パズル操作フロー統括
+/// パズルマネージャー（パズドラ風）
+/// ドラッグ操作・押し退け・連鎖コンボシステム
 /// </summary>
 public class PuzzleManager : MonoBehaviour
 {
-    [Header("参照")]
+    [Header("ボード参照")]
     [SerializeField] private PuzzleBoard board;
-    [SerializeField] private KanjiRecipe[] recipes;
 
-    [Header("線の設定")]
-    [SerializeField] private float lineWidth = 0.06f;
+    [Header("レシピ")]
+    [SerializeField] private KanjiRecipe[] recipes;
 
     [Header("消去スコア")]
     [SerializeField] private int eliminationScore = 300;
 
+    [Header("ドラッグ設定")]
+    [SerializeField] private float dragTimeLimit = 5f;
+
     public event Action<KanjiRecipe> OnCombineSuccess;
     public event Action<string, int> OnEliminationSuccess;
+    public event Action<int> OnComboChanged;
     public event Action<bool> OnStalemateChanged;
 
-    private KanjiPiece selectedPiece = null;
-    private bool isProcessing = false;
-    private bool isStalemate = false;
-    private bool isGameOver = false;
     private Camera mainCamera;
+    private bool isProcessing = false;
+    private bool isGameOver = false;
+    private bool isDragging = false;
+    private KanjiPiece draggedPiece;
+    private float dragStartTime;
+    private int currentCombo = 0;
 
-    private List<CombinablePair> combinablePairs = new List<CombinablePair>();
-    private List<GameObject> lineIndicators = new List<GameObject>();
-    private Sprite lineSprite;
     private HashSet<string> terminalKanji = new HashSet<string>();
 
     public KanjiRecipe[] Recipes => recipes;
-    public bool IsStalemate => isStalemate;
+    public bool IsStalemate { get; private set; }
 
-    /// <summary>
-    /// ゲームオーバー状態を設定（入力ブロック）
-    /// </summary>
     public void SetGameOver(bool gameOver) { isGameOver = gameOver; }
 
     private void Start()
@@ -71,25 +60,12 @@ public class PuzzleManager : MonoBehaviour
         mainCamera = Camera.main;
         if (board == null) board = GetComponent<PuzzleBoard>();
 
-        CreateLineSprite();
         BuildTerminalKanjiCache();
         board.InitializeBoard();
-        StartCoroutine(DelayedScan());
-    }
-
-    private void CreateLineSprite()
-    {
-        Texture2D tex = new Texture2D(4, 4);
-        Color[] pixels = new Color[16];
-        for (int i = 0; i < 16; i++) pixels[i] = Color.white;
-        tex.SetPixels(pixels);
-        tex.Apply();
-        lineSprite = Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4f);
     }
 
     private void BuildTerminalKanjiCache()
     {
-        terminalKanji.Clear();
         if (recipes == null) return;
 
         HashSet<string> resultKanji = new HashSet<string>();
@@ -109,125 +85,568 @@ public class PuzzleManager : MonoBehaviour
         }
     }
 
+    // ============================================================
+    // Update: ドラッグ入力処理
+    // ============================================================
+
+    private void Update()
+    {
+        if (isProcessing || isGameOver) return;
+
+        if (Pointer.current == null) return;
+
+        bool pressed = Pointer.current.press.isPressed;
+        bool justPressed = Pointer.current.press.wasPressedThisFrame;
+        bool justReleased = Pointer.current.press.wasReleasedThisFrame;
+
+        if (justPressed && !isDragging)
+        {
+            TryStartDrag();
+        }
+        else if (isDragging && pressed)
+        {
+            UpdateDrag();
+
+            // 5秒タイムリミット
+            if (Time.time - dragStartTime > dragTimeLimit)
+            {
+                EndDrag();
+            }
+        }
+        else if (isDragging && justReleased)
+        {
+            EndDrag();
+        }
+    }
+
+    // ============================================================
+    // ドラッグ操作
+    // ============================================================
+
+    private Vector3 GetPointerWorldPos()
+    {
+        Vector2 screenPos = Pointer.current.position.ReadValue();
+        Vector3 worldPos = mainCamera.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 0f));
+        worldPos.z = 0f;
+        return worldPos;
+    }
+
+    private void TryStartDrag()
+    {
+        Vector3 worldPos = GetPointerWorldPos();
+        Vector2Int gridPos = board.WorldToGridPosition(worldPos);
+
+        if (!board.IsValidPosition(gridPos.x, gridPos.y)) return;
+
+        KanjiPiece piece = board.Grid[gridPos.x, gridPos.y];
+        if (piece == null) return;
+
+        isDragging = true;
+        draggedPiece = piece;
+        dragStartTime = Time.time;
+
+        piece.SetDragging(true);
+    }
+
+    private void UpdateDrag()
+    {
+        if (draggedPiece == null) return;
+
+        Vector3 worldPos = GetPointerWorldPos();
+
+        // ドラッグ中のピースを指に追従
+        draggedPiece.transform.position = worldPos;
+
+        // 現在のセルを計算
+        Vector2Int gridPos = board.WorldToGridPosition(worldPos);
+
+        if (!board.IsValidPosition(gridPos.x, gridPos.y)) return;
+
+        int newRow = gridPos.x;
+        int newCol = gridPos.y;
+
+        // 別のセルに入った場合、押し退け（スワップ）
+        if (newRow != draggedPiece.row || newCol != draggedPiece.col)
+        {
+            int oldRow = draggedPiece.row;
+            int oldCol = draggedPiece.col;
+
+            board.SwapPiecesImmediate(oldRow, oldCol, newRow, newCol);
+        }
+    }
+
+    private void EndDrag()
+    {
+        if (draggedPiece != null)
+        {
+            draggedPiece.SetDragging(false);
+
+            // ドラッグ終了時、正しい位置にスナップ
+            Vector3 correctPos = board.GridToWorldPosition(draggedPiece.row, draggedPiece.col);
+            draggedPiece.SetPositionImmediate(correctPos);
+
+            draggedPiece = null;
+        }
+
+        isDragging = false;
+
+        // ドラッグ終了後、連鎖判定を開始
+        StartCoroutine(ResolveChains());
+    }
+
+    // ============================================================
+    // 連鎖（コンボ）システム
+    // ============================================================
+
+    private IEnumerator ResolveChains()
+    {
+        isProcessing = true;
+        currentCombo = 0;
+
+        while (true)
+        {
+            yield return new WaitForSeconds(0.2f);
+
+            List<MatchInfo> matches = FindAllMatches();
+
+            if (matches.Count == 0) break;
+
+            currentCombo++;
+            OnComboChanged?.Invoke(currentCombo);
+
+            // マッチを処理（消去・合体）
+            yield return StartCoroutine(ProcessMatches(matches));
+
+            // 重力落下
+            yield return new WaitForSeconds(0.15f);
+            board.DropPieces();
+
+            // 補充
+            yield return new WaitForSeconds(0.2f);
+            board.RefillEmptyCells();
+        }
+
+        // 連鎖終了
+        if (currentCombo > 0)
+        {
+            OnComboChanged?.Invoke(0); // 0=連鎖終了
+        }
+
+        // 手詰まり判定
+        CheckStalemate();
+
+        isProcessing = false;
+    }
+
+    private IEnumerator ProcessMatches(List<MatchInfo> matches)
+    {
+        // 重複しない消去位置を集める
+        HashSet<Vector2Int> toRemove = new HashSet<Vector2Int>();
+
+        foreach (var match in matches)
+        {
+            if (match.isRecipeMatch && match.recipe != null)
+            {
+                // レシピマッチ：素材を消去して結果をスポーン
+                Vector2Int posA = match.positions[0];
+                Vector2Int posB = match.positions[1];
+
+                string resultKanji = match.recipe.result;
+                int score = match.recipe.score;
+
+                // コンボボーナス
+                int comboScore = score + (currentCombo - 1) * 50;
+
+                OnCombineSuccess?.Invoke(match.recipe);
+
+                // 素材を消去
+                if (board.Grid[posA.x, posA.y] != null)
+                    board.Grid[posA.x, posA.y].PlayMergePopEffect();
+
+                yield return new WaitForSeconds(0.15f);
+
+                board.RemovePieceAt(posA.x, posA.y);
+                board.RemovePieceAt(posB.x, posB.y);
+
+                // 結果漢字をposAの位置にスポーン
+                KanjiPiece resultPiece = board.SpawnPieceAt(posA.x, posA.y);
+                if (resultPiece != null)
+                {
+                    resultPiece.SetKanji(resultKanji);
+                    resultPiece.PlayMergePopEffect();
+                }
+            }
+            else if (match.isElimination)
+            {
+                // 同種消去
+                int elimScore = match.score + (currentCombo - 1) * 50;
+                OnEliminationSuccess?.Invoke(match.resultKanji, elimScore);
+
+                foreach (var pos in match.positions)
+                {
+                    toRemove.Add(pos);
+                }
+            }
+            else if (match.positions.Count >= 3)
+            {
+                // 3つ揃え：同じ漢字3つ並び
+                int tripleScore = 200 + (currentCombo - 1) * 50;
+                OnEliminationSuccess?.Invoke(match.resultKanji, tripleScore);
+
+                // 特殊ルール：木+木+木=森 等
+                if (match.resultKanji != null)
+                {
+                    Vector2Int firstPos = match.positions[0];
+                    foreach (var pos in match.positions)
+                    {
+                        toRemove.Add(pos);
+                    }
+
+                    yield return new WaitForSeconds(0.15f);
+
+                    foreach (var pos in toRemove)
+                    {
+                        board.RemovePieceAt(pos.x, pos.y);
+                    }
+                    toRemove.Clear();
+
+                    // 結果漢字を生成
+                    if (!string.IsNullOrEmpty(match.resultKanji))
+                    {
+                        KanjiPiece resultPiece = board.SpawnPieceAt(firstPos.x, firstPos.y);
+                        if (resultPiece != null)
+                        {
+                            resultPiece.SetKanji(match.resultKanji);
+                            resultPiece.PlayMergePopEffect();
+                        }
+                    }
+                    continue;
+                }
+
+                foreach (var pos in match.positions)
+                {
+                    toRemove.Add(pos);
+                }
+            }
+        }
+
+        // 残りの消去対象をまとめて消す
+        if (toRemove.Count > 0)
+        {
+            yield return new WaitForSeconds(0.15f);
+
+            foreach (var pos in toRemove)
+            {
+                board.RemovePieceAt(pos.x, pos.y);
+            }
+        }
+    }
+
+    // ============================================================
+    // マッチ検索
+    // ============================================================
+
+    private List<MatchInfo> FindAllMatches()
+    {
+        List<MatchInfo> matches = new List<MatchInfo>();
+        HashSet<string> usedPositions = new HashSet<string>();
+
+        // 1. 隣接2ピースのレシピマッチを検索
+        FindRecipeMatches(matches, usedPositions);
+
+        // 2. 同一漢字3つ並び（横方向）
+        FindHorizontalTriples(matches, usedPositions);
+
+        // 3. 同一漢字3つ並び（縦方向）
+        FindVerticalTriples(matches, usedPositions);
+
+        // 4. 終端漢字の同種2つ隣接消去
+        FindTerminalPairEliminations(matches, usedPositions);
+
+        return matches;
+    }
+
+    private void FindRecipeMatches(List<MatchInfo> matches, HashSet<string> usedPositions)
+    {
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
+        {
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
+            {
+                // 右隣
+                if (c + 1 < PuzzleBoard.SIZE)
+                    TryRecipeMatch(r, c, r, c + 1, matches, usedPositions);
+
+                // 上隣
+                if (r + 1 < PuzzleBoard.SIZE)
+                    TryRecipeMatch(r, c, r + 1, c, matches, usedPositions);
+            }
+        }
+    }
+
+    private void TryRecipeMatch(int r1, int c1, int r2, int c2,
+        List<MatchInfo> matches, HashSet<string> usedPositions)
+    {
+        KanjiPiece a = board.Grid[r1, c1];
+        KanjiPiece b = board.Grid[r2, c2];
+        if (a == null || b == null) return;
+
+        string keyA = $"{r1},{c1}";
+        string keyB = $"{r2},{c2}";
+        if (usedPositions.Contains(keyA) || usedPositions.Contains(keyB)) return;
+
+        KanjiRecipe recipe = FindMatchingRecipe(a.Kanji, b.Kanji);
+        if (recipe == null) return;
+
+        matches.Add(new MatchInfo
+        {
+            positions = new List<Vector2Int> { new Vector2Int(r1, c1), new Vector2Int(r2, c2) },
+            recipe = recipe,
+            resultKanji = recipe.result,
+            score = recipe.score,
+            isRecipeMatch = true,
+            isElimination = false
+        });
+
+        usedPositions.Add(keyA);
+        usedPositions.Add(keyB);
+    }
+
+    private void FindHorizontalTriples(List<MatchInfo> matches, HashSet<string> usedPositions)
+    {
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
+        {
+            for (int c = 0; c <= PuzzleBoard.SIZE - 3; c++)
+            {
+                KanjiPiece a = board.Grid[r, c];
+                KanjiPiece b = board.Grid[r, c + 1];
+                KanjiPiece d = board.Grid[r, c + 2];
+                if (a == null || b == null || d == null) continue;
+                if (a.Kanji != b.Kanji || b.Kanji != d.Kanji) continue;
+
+                string keyA = $"{r},{c}";
+                string keyB = $"{r},{c + 1}";
+                string keyC = $"{r},{c + 2}";
+                if (usedPositions.Contains(keyA) || usedPositions.Contains(keyB) || usedPositions.Contains(keyC))
+                    continue;
+
+                string resultKanji = GetTripleResult(a.Kanji);
+
+                matches.Add(new MatchInfo
+                {
+                    positions = new List<Vector2Int>
+                    {
+                        new Vector2Int(r, c),
+                        new Vector2Int(r, c + 1),
+                        new Vector2Int(r, c + 2)
+                    },
+                    recipe = null,
+                    resultKanji = resultKanji,
+                    score = 200,
+                    isRecipeMatch = false,
+                    isElimination = false
+                });
+
+                usedPositions.Add(keyA);
+                usedPositions.Add(keyB);
+                usedPositions.Add(keyC);
+            }
+        }
+    }
+
+    private void FindVerticalTriples(List<MatchInfo> matches, HashSet<string> usedPositions)
+    {
+        for (int c = 0; c < PuzzleBoard.SIZE; c++)
+        {
+            for (int r = 0; r <= PuzzleBoard.SIZE - 3; r++)
+            {
+                KanjiPiece a = board.Grid[r, c];
+                KanjiPiece b = board.Grid[r + 1, c];
+                KanjiPiece d = board.Grid[r + 2, c];
+                if (a == null || b == null || d == null) continue;
+                if (a.Kanji != b.Kanji || b.Kanji != d.Kanji) continue;
+
+                string keyA = $"{r},{c}";
+                string keyB = $"{r + 1},{c}";
+                string keyC = $"{r + 2},{c}";
+                if (usedPositions.Contains(keyA) || usedPositions.Contains(keyB) || usedPositions.Contains(keyC))
+                    continue;
+
+                string resultKanji = GetTripleResult(a.Kanji);
+
+                matches.Add(new MatchInfo
+                {
+                    positions = new List<Vector2Int>
+                    {
+                        new Vector2Int(r, c),
+                        new Vector2Int(r + 1, c),
+                        new Vector2Int(r + 2, c)
+                    },
+                    recipe = null,
+                    resultKanji = resultKanji,
+                    score = 200,
+                    isRecipeMatch = false,
+                    isElimination = false
+                });
+
+                usedPositions.Add(keyA);
+                usedPositions.Add(keyB);
+                usedPositions.Add(keyC);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 同じ漢字3つ並び時の結果漢字を返す
+    /// </summary>
+    private string GetTripleResult(string kanji)
+    {
+        switch (kanji)
+        {
+            case "木": return "森";
+            case "日": return "晶";
+            case "火": return "焱";
+            case "人": return "众";
+            case "山": return "嵐";
+            case "石": return "磊";
+            case "月": return "鑫";
+            default: return null; // 特殊結果なし→消去のみ
+        }
+    }
+
+    private void FindTerminalPairEliminations(List<MatchInfo> matches, HashSet<string> usedPositions)
+    {
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
+        {
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
+            {
+                KanjiPiece piece = board.Grid[r, c];
+                if (piece == null) continue;
+                if (!IsTerminalKanji(piece.Kanji)) continue;
+
+                string key = $"{r},{c}";
+                if (usedPositions.Contains(key)) continue;
+
+                // 右隣
+                if (c + 1 < PuzzleBoard.SIZE)
+                {
+                    KanjiPiece other = board.Grid[r, c + 1];
+                    string otherKey = $"{r},{c + 1}";
+                    if (other != null && other.Kanji == piece.Kanji && !usedPositions.Contains(otherKey))
+                    {
+                        matches.Add(new MatchInfo
+                        {
+                            positions = new List<Vector2Int> { new Vector2Int(r, c), new Vector2Int(r, c + 1) },
+                            recipe = null,
+                            resultKanji = piece.Kanji,
+                            score = eliminationScore,
+                            isRecipeMatch = false,
+                            isElimination = true
+                        });
+                        usedPositions.Add(key);
+                        usedPositions.Add(otherKey);
+                        continue;
+                    }
+                }
+
+                // 上隣
+                if (r + 1 < PuzzleBoard.SIZE)
+                {
+                    KanjiPiece other = board.Grid[r + 1, c];
+                    string otherKey = $"{r + 1},{c}";
+                    if (other != null && other.Kanji == piece.Kanji && !usedPositions.Contains(otherKey))
+                    {
+                        matches.Add(new MatchInfo
+                        {
+                            positions = new List<Vector2Int> { new Vector2Int(r, c), new Vector2Int(r + 1, c) },
+                            recipe = null,
+                            resultKanji = piece.Kanji,
+                            score = eliminationScore,
+                            isRecipeMatch = false,
+                            isElimination = true
+                        });
+                        usedPositions.Add(key);
+                        usedPositions.Add(otherKey);
+                    }
+                }
+            }
+        }
+    }
+
     private bool IsTerminalKanji(string kanji)
     {
         return terminalKanji.Contains(kanji);
     }
 
-    private IEnumerator DelayedScan()
+    private KanjiRecipe FindMatchingRecipe(string a, string b)
     {
-        yield return new WaitForSeconds(0.1f);
-        ScanAndCheckStalemate();
+        if (recipes == null) return null;
+        foreach (var recipe in recipes)
+        {
+            if (recipe.Matches(a, b)) return recipe;
+        }
+        return null;
     }
 
-    private void Update()
+    // ============================================================
+    // 手詰まり判定
+    // ============================================================
+
+    private void CheckStalemate()
     {
-        if (isProcessing || isGameOver) return;
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
-            HandleClick();
+        bool hasMatch = HasAnyPossibleMatch();
+        bool wasStalemate = IsStalemate;
+        IsStalemate = !hasMatch;
+
+        if (IsStalemate != wasStalemate)
+        {
+            OnStalemateChanged?.Invoke(IsStalemate);
+        }
     }
 
-    private void HandleClick()
+    private bool HasAnyPossibleMatch()
     {
-        Vector2 screenPos = Mouse.current.position.ReadValue();
-        Vector3 worldPos = mainCamera.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, 0f));
-        worldPos.z = 0f;
+        // 現在の盤面でマッチがあるか
+        List<MatchInfo> currentMatches = FindAllMatches();
+        if (currentMatches.Count > 0) return true;
 
-        Vector2Int gridPos = board.WorldToGridPosition(worldPos);
-        if (!board.IsValidPosition(gridPos.x, gridPos.y)) { DeselectCurrent(); return; }
-
-        KanjiPiece clickedPiece = board.Grid[gridPos.x, gridPos.y];
-        if (clickedPiece == null) { DeselectCurrent(); return; }
-
-        if (selectedPiece == null)
+        // スワップでマッチが作れるか
+        for (int r = 0; r < PuzzleBoard.SIZE; r++)
         {
-            SelectPiece(clickedPiece);
-        }
-        else if (clickedPiece == selectedPiece)
-        {
-            DeselectCurrent();
-        }
-        else if (board.AreAdjacent(selectedPiece.row, selectedPiece.col, clickedPiece.row, clickedPiece.col))
-        {
-            CombinablePair? pair = FindPairBetween(selectedPiece, clickedPiece);
-            if (pair.HasValue)
+            for (int c = 0; c < PuzzleBoard.SIZE; c++)
             {
-                if (pair.Value.isElimination)
-                    StartCoroutine(ExecuteElimination(selectedPiece, clickedPiece, pair.Value.eliminationScore));
-                else
-                    StartCoroutine(ExecuteCombine(selectedPiece, clickedPiece, pair.Value.recipe));
-            }
-            else
-            {
-                StartCoroutine(ExecuteSwap(selectedPiece, clickedPiece));
+                if (c + 1 < PuzzleBoard.SIZE && SimulateSwapAndCheck(r, c, r, c + 1))
+                    return true;
+                if (r + 1 < PuzzleBoard.SIZE && SimulateSwapAndCheck(r, c, r + 1, c))
+                    return true;
             }
         }
-        else
-        {
-            DeselectCurrent();
-            SelectPiece(clickedPiece);
-        }
+
+        return false;
     }
 
-    private void SelectPiece(KanjiPiece piece) { selectedPiece = piece; piece.SetSelected(true); }
-    private void DeselectCurrent()
+    private bool SimulateSwapAndCheck(int r1, int c1, int r2, int c2)
     {
-        if (selectedPiece != null) { selectedPiece.SetSelected(false); selectedPiece = null; }
+        KanjiPiece a = board.Grid[r1, c1];
+        KanjiPiece b = board.Grid[r2, c2];
+        if (a == null || b == null) return false;
+
+        // 仮スワップ
+        board.Grid[r1, c1] = b;
+        board.Grid[r2, c2] = a;
+
+        List<MatchInfo> matches = FindAllMatches();
+
+        // 元に戻す
+        board.Grid[r1, c1] = a;
+        board.Grid[r2, c2] = b;
+
+        return matches.Count > 0;
     }
 
-    private IEnumerator ExecuteSwap(KanjiPiece pieceA, KanjiPiece pieceB)
-    {
-        isProcessing = true;
-        DeselectCurrent();
-        board.SwapPieces(pieceA.row, pieceA.col, pieceB.row, pieceB.col);
-        yield return new WaitForSeconds(0.3f);
-        ScanAndCheckStalemate();
-        isProcessing = false;
-    }
+    // ============================================================
+    // 盤面リセット
+    // ============================================================
 
-    private IEnumerator ExecuteCombine(KanjiPiece firstPiece, KanjiPiece secondPiece, KanjiRecipe recipe)
-    {
-        isProcessing = true;
-        DeselectCurrent();
-        ClearAllCombinableState();
-        ClearLineIndicators();
-
-        board.RemovePieceAt(firstPiece.row, firstPiece.col);
-        secondPiece.SetKanji(recipe.result);
-        OnCombineSuccess?.Invoke(recipe);
-
-        yield return new WaitForSeconds(0.3f);
-        board.DropPieces();
-        yield return new WaitForSeconds(0.3f);
-        board.RefillEmptyCells();
-        yield return new WaitForSeconds(0.3f);
-        ScanAndCheckStalemate();
-        isProcessing = false;
-    }
-
-    private IEnumerator ExecuteElimination(KanjiPiece firstPiece, KanjiPiece secondPiece, int score)
-    {
-        isProcessing = true;
-        DeselectCurrent();
-        ClearAllCombinableState();
-        ClearLineIndicators();
-
-        board.RemovePieceAt(firstPiece.row, firstPiece.col);
-        board.RemovePieceAt(secondPiece.row, secondPiece.col);
-        OnEliminationSuccess?.Invoke(firstPiece.Kanji, score);
-
-        yield return new WaitForSeconds(0.3f);
-        board.DropPieces();
-        yield return new WaitForSeconds(0.3f);
-        board.RefillEmptyCells();
-        yield return new WaitForSeconds(0.3f);
-        ScanAndCheckStalemate();
-        isProcessing = false;
-    }
-
-    /// <summary>
-    /// 盤面リセット（ペナルティはGameManager側で処理）
-    /// </summary>
     public void ResetBoard()
     {
         StartCoroutine(ExecuteReset());
@@ -236,241 +655,18 @@ public class PuzzleManager : MonoBehaviour
     private IEnumerator ExecuteReset()
     {
         isProcessing = true;
-        ClearLineIndicators();
-        ClearAllCombinableState();
         board.ClearBoard();
 
         yield return new WaitForSeconds(0.2f);
         board.FillBoard();
         yield return new WaitForSeconds(0.3f);
 
-        isStalemate = false;
+        IsStalemate = false;
         OnStalemateChanged?.Invoke(false);
-        ScanAndCheckStalemate();
+
+        // リセット後にも連鎖判定
+        yield return StartCoroutine(ResolveChains());
+
         isProcessing = false;
-    }
-
-    // ============================================================
-    // スキャン & 詰み判定
-    // ============================================================
-
-    /// <summary>
-    /// 合体可能ペアのスキャンと詰み判定を一括実行
-    /// </summary>
-    private void ScanAndCheckStalemate()
-    {
-        ScanCombinablePairs();
-        CheckStalemate();
-    }
-
-    /// <summary>
-    /// 盤面全体をスキャンし、隣接する合体可能ペアを検出
-    /// </summary>
-    public void ScanCombinablePairs()
-    {
-        ClearLineIndicators();
-        ClearAllCombinableState();
-        combinablePairs.Clear();
-
-        if (recipes == null || board.Grid == null) return;
-
-        for (int r = 0; r < PuzzleBoard.SIZE; r++)
-        {
-            for (int c = 0; c < PuzzleBoard.SIZE; c++)
-            {
-                KanjiPiece piece = board.Grid[r, c];
-                if (piece == null) continue;
-
-                if (c + 1 < PuzzleBoard.SIZE && board.Grid[r, c + 1] != null)
-                    CheckAndAddPair(piece, board.Grid[r, c + 1], true);
-
-                if (r + 1 < PuzzleBoard.SIZE && board.Grid[r + 1, c] != null)
-                    CheckAndAddPair(piece, board.Grid[r + 1, c], false);
-            }
-        }
-    }
-
-    /// <summary>
-    /// 詰み判定：1回のswapで合体可能になる箇所があるかを全探索
-    /// </summary>
-    private void CheckStalemate()
-    {
-        // 現在すでに合体可能ペアがあれば詰みではない
-        if (combinablePairs.Count > 0)
-        {
-            SetStalemate(false);
-            return;
-        }
-
-        // 全隣接ペアのswapをシミュレーションして合体可能性をチェック
-        bool canMatch = SimulateAnySwapMatch();
-        SetStalemate(!canMatch);
-    }
-
-    private void SetStalemate(bool stalemate)
-    {
-        if (stalemate != isStalemate)
-        {
-            isStalemate = stalemate;
-            OnStalemateChanged?.Invoke(isStalemate);
-            if (isStalemate)
-                Debug.Log("[PuzzleManager] 手詰まり検出！入れ替えても合体できるペアがありません");
-        }
-    }
-
-    /// <summary>
-    /// 全隣接ペアのswapをシミュレーションし、1つでも合体可能な状況が生まれるか判定
-    /// </summary>
-    private bool SimulateAnySwapMatch()
-    {
-        // 全隣接ペアを列挙
-        for (int r = 0; r < PuzzleBoard.SIZE; r++)
-        {
-            for (int c = 0; c < PuzzleBoard.SIZE; c++)
-            {
-                // 右隣とのswap
-                if (c + 1 < PuzzleBoard.SIZE)
-                {
-                    if (SimulateSwapAndCheck(r, c, r, c + 1))
-                        return true;
-                }
-                // 上隣とのswap
-                if (r + 1 < PuzzleBoard.SIZE)
-                {
-                    if (SimulateSwapAndCheck(r, c, r + 1, c))
-                        return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// 指定2セルをswapした状態で合体可能ペアがあるかチェック
-    /// </summary>
-    private bool SimulateSwapAndCheck(int r1, int c1, int r2, int c2)
-    {
-        KanjiPiece p1 = board.Grid[r1, c1];
-        KanjiPiece p2 = board.Grid[r2, c2];
-        if (p1 == null || p2 == null) return false;
-
-        // 仮swap（グリッドデータのみ）
-        board.Grid[r1, c1] = p2;
-        board.Grid[r2, c2] = p1;
-
-        bool found = HasAdjacentMatch();
-
-        // 元に戻す
-        board.Grid[r1, c1] = p1;
-        board.Grid[r2, c2] = p2;
-
-        return found;
-    }
-
-    /// <summary>
-    /// 現在のグリッド状態で隣接する合体/消去可能ペアがあるかチェック
-    /// </summary>
-    private bool HasAdjacentMatch()
-    {
-        for (int r = 0; r < PuzzleBoard.SIZE; r++)
-        {
-            for (int c = 0; c < PuzzleBoard.SIZE; c++)
-            {
-                KanjiPiece piece = board.Grid[r, c];
-                if (piece == null) continue;
-
-                // 右隣
-                if (c + 1 < PuzzleBoard.SIZE && board.Grid[r, c + 1] != null)
-                {
-                    string a = piece.Kanji, b = board.Grid[r, c + 1].Kanji;
-                    if (FindMatchingRecipe(a, b) != null) return true;
-                    if (a == b && IsTerminalKanji(a)) return true;
-                }
-                // 上隣
-                if (r + 1 < PuzzleBoard.SIZE && board.Grid[r + 1, c] != null)
-                {
-                    string a = piece.Kanji, b = board.Grid[r + 1, c].Kanji;
-                    if (FindMatchingRecipe(a, b) != null) return true;
-                    if (a == b && IsTerminalKanji(a)) return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private void CheckAndAddPair(KanjiPiece piece, KanjiPiece otherPiece, bool isHorizontal)
-    {
-        KanjiRecipe recipe = FindMatchingRecipe(piece.Kanji, otherPiece.Kanji);
-        if (recipe != null)
-        {
-            combinablePairs.Add(new CombinablePair(piece, otherPiece, recipe));
-            piece.SetCombinable(true);
-            otherPiece.SetCombinable(true);
-            CreateLineIndicator(piece, otherPiece, isHorizontal);
-            return;
-        }
-
-        if (piece.Kanji == otherPiece.Kanji && IsTerminalKanji(piece.Kanji))
-        {
-            combinablePairs.Add(new CombinablePair(piece, otherPiece, eliminationScore));
-            piece.SetCombinable(true);
-            otherPiece.SetCombinable(true);
-            CreateLineIndicator(piece, otherPiece, isHorizontal);
-        }
-    }
-
-    private void ClearAllCombinableState()
-    {
-        if (board.Grid == null) return;
-        for (int r = 0; r < PuzzleBoard.SIZE; r++)
-            for (int c = 0; c < PuzzleBoard.SIZE; c++)
-                if (board.Grid[r, c] != null) board.Grid[r, c].SetCombinable(false);
-    }
-
-    private CombinablePair? FindPairBetween(KanjiPiece a, KanjiPiece b)
-    {
-        foreach (var pair in combinablePairs)
-            if ((pair.pieceA == a && pair.pieceB == b) || (pair.pieceA == b && pair.pieceB == a))
-                return pair;
-        return null;
-    }
-
-    private KanjiRecipe FindMatchingRecipe(string a, string b)
-    {
-        foreach (var recipe in recipes)
-            if (recipe.Matches(a, b)) return recipe;
-        return null;
-    }
-
-    private void CreateLineIndicator(KanjiPiece a, KanjiPiece b, bool isHorizontal)
-    {
-        if (lineSprite == null) return;
-        Vector3 posA = board.GridToWorldPosition(a.row, a.col);
-        Vector3 posB = board.GridToWorldPosition(b.row, b.col);
-        Vector3 midPoint = (posA + posB) / 2f;
-        midPoint.z = -1f;
-
-        GameObject lineObj = new GameObject("CombineLine");
-        lineObj.transform.SetParent(transform);
-        lineObj.transform.position = midPoint;
-
-        SpriteRenderer sr = lineObj.AddComponent<SpriteRenderer>();
-        sr.sprite = lineSprite;
-        sr.color = new Color(0.1f, 0.1f, 0.1f, 0.8f);
-        sr.sortingOrder = 10;
-
-        float gap = board.CellSize * 0.3f;
-        lineObj.transform.localScale = isHorizontal
-            ? new Vector3(gap, lineWidth, 1f)
-            : new Vector3(lineWidth, gap, 1f);
-
-        lineIndicators.Add(lineObj);
-    }
-
-    private void ClearLineIndicators()
-    {
-        foreach (var line in lineIndicators)
-            if (line != null) Destroy(line);
-        lineIndicators.Clear();
     }
 }

@@ -114,6 +114,21 @@ public class ProjectSetupTool : Editor
         CreateRecipe("Recipe_OnNichi", "音", "日", "暗", 300);
         CreateRecipe("Recipe_GetsuShutsu", "月", "出", "朏", 300);
         CreateRecipe("Recipe_MokuShou", "木", "昌", "椙", 300);
+
+        // ===== 部首ワイルドカードレシピ =====
+        // 氵 (さんずい)
+        CreateRecipe("Recipe_SanzuiNichi", "氵", "日", "汨", 200);
+        CreateRecipe("Recipe_SanzuiGetsu", "氵", "月", "汐", 200);
+        CreateRecipe("Recipe_SanzuiMoku", "氵", "木", "沐", 200);
+
+        // 亻 (にんべん)
+        CreateRecipe("Recipe_NinbenRitsu", "亻", "立", "位", 200);
+        CreateRecipe("Recipe_NinbenMoku", "亻", "木", "休", 200);
+        CreateRecipe("Recipe_NinbenSan", "亻", "山", "仙", 200);
+
+        // 扌 (てへん)
+        CreateRecipe("Recipe_TehenDen", "扌", "田", "打", 200);
+        CreateRecipe("Recipe_TehenRyoku", "扌", "力", "扛", 200);
     }
 
     private static KanjiRecipe CreateRecipe(string fileName, string a, string b, string result, int score)
@@ -325,17 +340,17 @@ public class ProjectSetupTool : Editor
         PuzzleBoard board = puzzleRoot.AddComponent<PuzzleBoard>();
         PuzzleManager pm = puzzleRoot.AddComponent<PuzzleManager>();
 
-        // PuzzleBoard設定
+        // PuzzleBoard設定（4x4盤面用）
         SerializedObject boardSO = new SerializedObject(board);
-        boardSO.FindProperty("cellSize").floatValue = 1.5f;
-        boardSO.FindProperty("cellSpacing").floatValue = 0.15f;
+        boardSO.FindProperty("cellSize").floatValue = 1.1f;
+        boardSO.FindProperty("cellSpacing").floatValue = 0.1f;
 
         GameObject piecePrefab = AssetDatabase.LoadAssetAtPath<GameObject>($"{PREFAB_PATH}/Puzzle/KanjiPiecePrefab.prefab");
         boardSO.FindProperty("piecePrefab").objectReferenceValue = piecePrefab;
 
-        // 漢字プール（小学校レベルの漢字のみ、10種類）
+        // 漢字プール（基本10種 + 部首3種）
         SerializedProperty kanjiPoolProp = boardSO.FindProperty("kanjiPool");
-        string[] kanjiPool = { "木", "火", "日", "月", "人", "田", "力", "山", "石", "立" };
+        string[] kanjiPool = { "木", "火", "日", "月", "人", "田", "力", "山", "石", "立", "氵", "亻", "扌" };
         kanjiPoolProp.arraySize = kanjiPool.Length;
         for (int i = 0; i < kanjiPool.Length; i++)
         {
@@ -375,57 +390,63 @@ public class ProjectSetupTool : Editor
 
         CanvasScaler scaler = canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1080, 1920);
+        scaler.referenceResolution = new Vector2(960, 540);
         scaler.matchWidthOrHeight = 0.5f;
 
         canvasGO.AddComponent<GraphicRaycaster>();
 
         // タイトル
         CreateTMPText(canvasGO, "TitleText", "漢字合体パズル",
-            new Vector2(0, 440), new Vector2(600, 80),
-            48, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
-
-        // タイマー表示
-        GameObject timeText = CreateTMPText(canvasGO, "TimeText", "Time: 60.00",
-            new Vector2(0, 380), new Vector2(400, 50),
+            new Vector2(-300, 240), new Vector2(400, 50),
             36, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
+
+        // タイマー表示（右上）
+        GameObject timeText = CreateTMPText(canvasGO, "TimeText", "Time: 60.00",
+            new Vector2(300, 240), new Vector2(300, 40),
+            28, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
 
         // ハイスコア表示（左上）
         GameObject highScoreTextGO = CreateTMPText(canvasGO, "HighScoreText", "Best: 0",
-            new Vector2(0, 0), new Vector2(250, 40),
-            24, fontSDF, new Color(0.6f, 0.45f, 0.0f), TextAlignmentOptions.Left);
+            new Vector2(0, 0), new Vector2(200, 30),
+            20, fontSDF, new Color(0.6f, 0.45f, 0.0f), TextAlignmentOptions.Left);
 
         RectTransform hsRT = highScoreTextGO.GetComponent<RectTransform>();
         hsRT.anchorMin = new Vector2(0, 1);
         hsRT.anchorMax = new Vector2(0, 1);
         hsRT.pivot = new Vector2(0, 1);
-        hsRT.anchoredPosition = new Vector2(20, -20);
+        hsRT.anchoredPosition = new Vector2(10, -10);
 
-        // 時間ボーナスポップアップ（タイマーの横）
+        // 時間ボーナスポップアップ
         GameObject timeBonusPopup = CreateTMPText(canvasGO, "TimeBonusPopup", "+3sec",
-            new Vector2(220, 380), new Vector2(200, 40),
+            new Vector2(300, 210), new Vector2(150, 30),
             28, fontSDF, new Color(0.1f, 0.7f, 0.2f), TextAlignmentOptions.Left);
         timeBonusPopup.SetActive(false);
 
-        // スコア表示
+        // スコア表示（右上タイマーの下）
         GameObject scoreText = CreateTMPText(canvasGO, "ScoreText", "スコア: 0",
-            new Vector2(0, 340), new Vector2(400, 40),
-            30, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(300, 200), new Vector2(300, 30),
+            24, fontSDF, new Color(0.3f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
-        // 最後の合体情報
+        // 最後の合体情報（下部）
         GameObject lastCombineText = CreateTMPText(canvasGO, "LastCombineText", "",
-            new Vector2(0, 300), new Vector2(550, 40),
-            24, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(0, -240), new Vector2(500, 30),
+            20, fontSDF, new Color(0.5f, 0.3f, 0.1f), TextAlignmentOptions.Center);
 
         // 操作説明
         CreateTMPText(canvasGO, "InstructionText",
-            "ピースをクリックして選択 → 隣のピースをクリックで入れ替え\n振動しているペアをクリックで合体すると時間回復！",
-            new Vector2(0, -400), new Vector2(700, 80),
-            22, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
+            "ピースをドラッグして入れ替え！ 合体すると時間回復＋連鎖ボーナス！",
+            new Vector2(0, -260), new Vector2(700, 30),
+            18, fontSDF, new Color(0.4f, 0.35f, 0.3f), TextAlignmentOptions.Center);
 
-        // ===== 常設リセットボタン（下部） =====
+        // コンボテキスト（画面中央に大きく表示）
+        GameObject comboTextGO = CreateTMPText(canvasGO, "ComboText", "",
+            new Vector2(0, 60), new Vector2(400, 80),
+            48, fontSDF, new Color(1f, 0.8f, 0f), TextAlignmentOptions.Center);
+        comboTextGO.SetActive(false);
+
+        // ===== 常設リセットボタン（右下） =====
         GameObject resetBtnGO = CreateButton(canvasGO, "ResetButton", "リセット",
-            new Vector2(0, -320), new Vector2(160, 60),
+            new Vector2(350, -230), new Vector2(120, 40),
             fontSDF, new Color(0.5f, 0.5f, 0.55f), Color.white);
 
         Image resetBtnImage = resetBtnGO.GetComponent<Image>();
@@ -492,15 +513,49 @@ public class ProjectSetupTool : Editor
 
         GameObject gameOverScoreText = CreateTMPText(goBox, "GameOverScoreText",
             "TIME UP!\n\n最終スコア: 0",
-            new Vector2(0, 30), new Vector2(500, 200),
-            36, fontSDF, new Color(0.8f, 0.2f, 0.1f), TextAlignmentOptions.Center);
+            new Vector2(0, 20), new Vector2(400, 120),
+            32, fontSDF, new Color(0.8f, 0.2f, 0.1f), TextAlignmentOptions.Center);
 
-        // リトライボタン
         GameObject retryBtnGO = CreateButton(goBox, "RetryButton", "リトライ",
-            new Vector2(0, -100), new Vector2(200, 60),
+            new Vector2(0, -70), new Vector2(160, 45),
             fontSDF, new Color(0.2f, 0.5f, 0.8f), Color.white);
 
         gameOverPanel.SetActive(false);
+
+        // ===== パーティクルシステム =====
+        GameObject particleGO = new GameObject("MergeParticle");
+        particleGO.transform.position = Vector3.zero;
+        ParticleSystem ps = particleGO.AddComponent<ParticleSystem>();
+
+        var main = ps.main;
+        main.duration = 0.5f;
+        main.startLifetime = 0.6f;
+        main.startSpeed = 3f;
+        main.startSize = 0.15f;
+        main.startColor = new Color(1f, 0.9f, 0.3f);
+        main.maxParticles = 30;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0;
+        emission.SetBurst(0, new ParticleSystem.Burst(0f, 20));
+
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.3f;
+
+        var colorOverLifetime = ps.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient grad = new Gradient();
+        grad.SetKeys(
+            new GradientColorKey[] { new GradientColorKey(new Color(1f, 0.9f, 0.3f), 0f), new GradientColorKey(new Color(1f, 0.5f, 0.1f), 1f) },
+            new GradientAlphaKey[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) }
+        );
+        colorOverLifetime.color = grad;
+
+        ps.Stop();
 
         // ===== GameManager =====
         GameObject gmGO = new GameObject("GameManager");
@@ -517,6 +572,7 @@ public class ProjectSetupTool : Editor
         gmSO.FindProperty("resetButton").objectReferenceValue = resetBtnGO.GetComponent<Button>();
         gmSO.FindProperty("resetButtonLabel").objectReferenceValue = resetBtnLabel;
         gmSO.FindProperty("resetButtonImage").objectReferenceValue = resetBtnImage;
+        gmSO.FindProperty("comboText").objectReferenceValue = comboTextGO.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("confirmResetPanel").objectReferenceValue = confirmPanel;
         gmSO.FindProperty("confirmResetText").objectReferenceValue = confirmTextGO.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtnGO.GetComponent<Button>();
@@ -525,6 +581,7 @@ public class ProjectSetupTool : Editor
         gmSO.FindProperty("gameOverScoreText").objectReferenceValue = gameOverScoreText.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("retryButton").objectReferenceValue = retryBtnGO.GetComponent<Button>();
         gmSO.FindProperty("highScoreText").objectReferenceValue = highScoreTextGO.GetComponent<TextMeshProUGUI>();
+        gmSO.FindProperty("mergeParticle").objectReferenceValue = ps;
         gmSO.ApplyModifiedProperties();
     }
 

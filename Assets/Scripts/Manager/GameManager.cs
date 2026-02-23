@@ -6,7 +6,7 @@ using System.Collections;
 
 /// <summary>
 /// ゲーム全体の管理
-/// リアルタイム・タイムアタック制：60秒カウントダウン、合体で+3秒回復
+/// リアルタイム・タイムアタック制 + パズドラ風連鎖コンボ
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -25,6 +25,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timeText;
     [SerializeField] private TextMeshProUGUI timeBonusPopup;
     [SerializeField] private TextMeshProUGUI lastCombineText;
+    [SerializeField] private TextMeshProUGUI comboText;
     [SerializeField] private Button resetButton;
     [SerializeField] private TextMeshProUGUI resetButtonLabel;
     [SerializeField] private Image resetButtonImage;
@@ -43,6 +44,9 @@ public class GameManager : MonoBehaviour
     [Header("ハイスコア")]
     [SerializeField] private TextMeshProUGUI highScoreText;
 
+    [Header("パーティクル")]
+    [SerializeField] private ParticleSystem mergeParticle;
+
     private const string HIGH_SCORE_KEY = "KanjiPuzzle_HighScore";
 
     private int score = 0;
@@ -52,6 +56,7 @@ public class GameManager : MonoBehaviour
     private bool isStalemateState = false;
     private Coroutine flashCoroutine;
     private Coroutine popupCoroutine;
+    private Coroutine comboCoroutine;
     private Color timeNormalColor = new Color(0.2f, 0.15f, 0.1f);
     private Color timeWarningColor = new Color(0.9f, 0.15f, 0.1f);
 
@@ -68,8 +73,6 @@ public class GameManager : MonoBehaviour
     private void Start()
     {
         remainingTime = initialTime;
-
-        // ハイスコア読込
         highScore = PlayerPrefs.GetInt(HIGH_SCORE_KEY, 0);
 
         if (puzzleManager != null)
@@ -77,6 +80,7 @@ public class GameManager : MonoBehaviour
             puzzleManager.OnCombineSuccess += HandleCombineSuccess;
             puzzleManager.OnEliminationSuccess += HandleEliminationSuccess;
             puzzleManager.OnStalemateChanged += HandleStalemateChanged;
+            puzzleManager.OnComboChanged += HandleComboChanged;
         }
 
         if (resetButton != null)
@@ -99,6 +103,9 @@ public class GameManager : MonoBehaviour
 
         if (timeBonusPopup != null)
             timeBonusPopup.gameObject.SetActive(false);
+
+        if (comboText != null)
+            comboText.gameObject.SetActive(false);
 
         UpdateScoreUI();
         UpdateHighScoreUI();
@@ -132,6 +139,9 @@ public class GameManager : MonoBehaviour
         if (lastCombineText != null)
             lastCombineText.text = $"{recipe.materialA} + {recipe.materialB} = {recipe.result}  (+{recipe.score}点)";
 
+        // パーティクル再生
+        PlayMergeParticle();
+
         UpdateScoreUI();
     }
 
@@ -141,9 +151,60 @@ public class GameManager : MonoBehaviour
         AddTime(mergeTimeBonus);
 
         if (lastCombineText != null)
-            lastCombineText.text = $"{kanji} + {kanji} → 消滅！ (+{elimScore}点)";
+            lastCombineText.text = $"{kanji} → 消滅！ (+{elimScore}点)";
+
+        PlayMergeParticle();
 
         UpdateScoreUI();
+    }
+
+    private void HandleComboChanged(int combo)
+    {
+        if (combo == 0)
+        {
+            // 連鎖終了
+            if (comboCoroutine != null) StopCoroutine(comboCoroutine);
+            if (comboText != null)
+                comboText.gameObject.SetActive(false);
+            return;
+        }
+
+        if (combo >= 2)
+        {
+            // コンボ表示
+            if (comboCoroutine != null) StopCoroutine(comboCoroutine);
+            comboCoroutine = StartCoroutine(ShowComboPopup(combo));
+        }
+    }
+
+    private IEnumerator ShowComboPopup(int combo)
+    {
+        if (comboText == null) yield break;
+
+        comboText.gameObject.SetActive(true);
+        comboText.text = $"{combo} Combo!";
+
+        // ポップアップアニメーション
+        float duration = 0.5f;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+
+            // スケールバウンス
+            float scale = 1f + Mathf.Sin(t * Mathf.PI) * 0.5f;
+            comboText.transform.localScale = Vector3.one * scale;
+
+            // 色彩
+            float hue = (Time.time * 0.5f) % 1f;
+            comboText.color = Color.HSVToRGB(hue, 0.8f, 1f);
+
+            yield return null;
+        }
+
+        comboText.transform.localScale = Vector3.one;
     }
 
     private void HandleStalemateChanged(bool isStalemate)
@@ -177,30 +238,32 @@ public class GameManager : MonoBehaviour
     // 時間管理
     // ============================================================
 
-    /// <summary>
-    /// 時間を加算する（合体ボーナス）
-    /// </summary>
     private void AddTime(float seconds)
     {
         if (isGameOver) return;
-
         remainingTime += seconds;
         ShowTimeBonusPopup($"+{seconds:F0}sec");
     }
 
-    /// <summary>
-    /// 時間を減算する（リセットペナルティ）
-    /// </summary>
     private void SubtractTime(float seconds)
     {
         if (isGameOver) return;
-
         remainingTime = Mathf.Max(0f, remainingTime - seconds);
         ShowTimeBonusPopup($"-{seconds:F0}sec");
 
-        if (remainingTime <= 0f)
+        if (remainingTime <= 0f) TriggerGameOver();
+    }
+
+    // ============================================================
+    // パーティクル
+    // ============================================================
+
+    private void PlayMergeParticle()
+    {
+        if (mergeParticle != null)
         {
-            TriggerGameOver();
+            mergeParticle.Stop();
+            mergeParticle.Play();
         }
     }
 
@@ -213,15 +276,12 @@ public class GameManager : MonoBehaviour
         if (isGameOver) return;
         isGameOver = true;
 
-        // PuzzleManagerの入力を無効化
         if (puzzleManager != null)
             puzzleManager.SetGameOver(true);
 
-        // リセットボタンを無効化
         if (resetButton != null)
             resetButton.interactable = false;
 
-        // ハイスコア更新
         if (score > highScore)
         {
             highScore = score;
@@ -230,7 +290,6 @@ public class GameManager : MonoBehaviour
         }
         UpdateHighScoreUI();
 
-        // ゲームオーバーパネル表示
         if (gameOverPanel != null)
         {
             gameOverPanel.SetActive(true);
@@ -242,22 +301,16 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[GameManager] ゲームオーバー！ 最終スコア: {score}");
     }
 
-    /// <summary>
-    /// リトライ：ゲーム全体をリセットして再開
-    /// </summary>
     private void OnRetryButtonClicked()
     {
-        // 状態リセット
         score = 0;
         remainingTime = initialTime;
         isGameOver = false;
         isStalemateState = false;
 
-        // UI非表示
         if (gameOverPanel != null)
             gameOverPanel.SetActive(false);
 
-        // リセットボタン再有効化
         if (resetButton != null)
             resetButton.interactable = true;
 
@@ -267,13 +320,11 @@ public class GameManager : MonoBehaviour
         if (resetButtonLabel != null)
             resetButtonLabel.text = "リセット";
 
-        if (flashCoroutine != null)
-        {
-            StopCoroutine(flashCoroutine);
-            flashCoroutine = null;
-        }
+        if (flashCoroutine != null) { StopCoroutine(flashCoroutine); flashCoroutine = null; }
 
-        // PuzzleManagerを再開
+        if (comboText != null)
+            comboText.gameObject.SetActive(false);
+
         if (puzzleManager != null)
         {
             puzzleManager.SetGameOver(false);
@@ -330,14 +381,12 @@ public class GameManager : MonoBehaviour
 
     private void UpdateScoreUI()
     {
-        if (scoreText != null)
-            scoreText.text = $"スコア: {score}";
+        if (scoreText != null) scoreText.text = $"スコア: {score}";
     }
 
     private void UpdateHighScoreUI()
     {
-        if (highScoreText != null)
-            highScoreText.text = $"Best: {highScore}";
+        if (highScoreText != null) highScoreText.text = $"Best: {highScore}";
     }
 
     private void UpdateTimeUI()
@@ -345,11 +394,8 @@ public class GameManager : MonoBehaviour
         if (timeText != null)
         {
             timeText.text = $"Time: {remainingTime:F2}";
-
-            // 残り10秒以下で赤文字
             timeText.color = remainingTime <= 10f ? timeWarningColor : timeNormalColor;
 
-            // 残り10秒以下でスケール演出
             if (remainingTime <= 10f)
             {
                 float pulse = 1f + Mathf.Sin(Time.time * 6f) * 0.05f;
@@ -362,13 +408,9 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// +Xsec / -Xsec ポップアップ演出
-    /// </summary>
     private void ShowTimeBonusPopup(string text)
     {
         if (timeBonusPopup == null) return;
-
         if (popupCoroutine != null) StopCoroutine(popupCoroutine);
         popupCoroutine = StartCoroutine(TimeBonusPopupCoroutine(text));
     }
@@ -392,11 +434,9 @@ public class GameManager : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = elapsed / duration;
 
-            // 上に浮かんで消える
             timeBonusPopup.rectTransform.anchoredPosition =
                 startPos + new Vector3(0, 40f * t, 0);
 
-            // フェードアウト
             Color c = timeBonusPopup.color;
             c.a = 1f - t;
             timeBonusPopup.color = c;
@@ -432,6 +472,7 @@ public class GameManager : MonoBehaviour
             puzzleManager.OnCombineSuccess -= HandleCombineSuccess;
             puzzleManager.OnEliminationSuccess -= HandleEliminationSuccess;
             puzzleManager.OnStalemateChanged -= HandleStalemateChanged;
+            puzzleManager.OnComboChanged -= HandleComboChanged;
         }
     }
 }

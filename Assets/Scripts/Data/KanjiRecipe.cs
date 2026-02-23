@@ -3,6 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 漢字合体レシピのScriptableObject
 /// 素材A + 素材B = 完成漢字 + スコア
+/// ワイルドカード対応
 /// </summary>
 [CreateAssetMenu(fileName = "NewKanjiRecipe", menuName = "KanjiPuzzle/Kanji Recipe")]
 public class KanjiRecipe : ScriptableObject
@@ -20,6 +21,13 @@ public class KanjiRecipe : ScriptableObject
 
     [Tooltip("合体時に得られるスコア")]
     public int score = 100;
+
+    [Header("ワイルドカード")]
+    [Tooltip("素材Aがワイルドカード（部首）かどうか")]
+    public bool isWildcardA = false;
+
+    [Tooltip("素材Bがワイルドカード（部首）かどうか")]
+    public bool isWildcardB = false;
 
     /// <summary>
     /// 指定した2つの漢字がこのレシピにマッチするか判定する

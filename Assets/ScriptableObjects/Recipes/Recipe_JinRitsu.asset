@@ -16,3 +16,5 @@ MonoBehaviour:
   materialB: "\u7ACB"
   result: "\u4F4D"
   score: 150
+  isWildcardA: 0
+  isWildcardB: 0
