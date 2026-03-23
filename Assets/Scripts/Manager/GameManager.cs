@@ -18,7 +18,7 @@ public class GameManager : MonoBehaviour
 
     [Header("時間設定")]
     [SerializeField] private float initialTime = 60f;
-    [SerializeField] private float mergeTimeBonus = 3f;
+    [SerializeField] private float mergeTimeBonus = 1.5f;
 
     [Header("UI参照")]
     [SerializeField] private TextMeshProUGUI scoreText;
@@ -296,7 +296,7 @@ public class GameManager : MonoBehaviour
     {
         if (isGameOver) return;
         remainingTime += seconds;
-        ShowTimeBonusPopup($"+{seconds:F0}sec");
+        ShowTimeBonusPopup($"+{seconds:G}sec");
     }
 
     // ============================================================
