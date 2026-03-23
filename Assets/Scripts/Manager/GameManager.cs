@@ -7,6 +7,7 @@ using System.Collections;
 /// <summary>
 /// ゲーム全体の管理
 /// タイトル画面・デュアルモード・タイムアタック制
+/// 手動シャッフル廃止 → 詰み時は完全自動シャッフルのみ
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -18,7 +19,6 @@ public class GameManager : MonoBehaviour
     [Header("時間設定")]
     [SerializeField] private float initialTime = 60f;
     [SerializeField] private float mergeTimeBonus = 3f;
-    [SerializeField] private float resetTimePenalty = 10f;
 
     [Header("UI参照")]
     [SerializeField] private TextMeshProUGUI scoreText;
@@ -27,15 +27,6 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI lastCombineText;
     [SerializeField] private TextMeshProUGUI comboText;
     [SerializeField] private TextMeshProUGUI modeLabel;
-    [SerializeField] private Button resetButton;
-    [SerializeField] private TextMeshProUGUI resetButtonLabel;
-    [SerializeField] private Image resetButtonImage;
-
-    [Header("確認ダイアログ")]
-    [SerializeField] private GameObject confirmResetPanel;
-    [SerializeField] private TextMeshProUGUI confirmResetText;
-    [SerializeField] private Button confirmYesButton;
-    [SerializeField] private Button confirmNoButton;
 
     [Header("ゲームオーバー")]
     [SerializeField] private GameObject gameOverPanel;
@@ -64,7 +55,6 @@ public class GameManager : MonoBehaviour
     private bool isGameOver = false;
     private bool isPlaying = false;
     private GameMode currentMode = GameMode.Classic;
-    private Coroutine flashCoroutine;
     private Coroutine popupCoroutine;
     private Coroutine comboCoroutine;
     private Color timeNormalColor = new Color(0.2f, 0.15f, 0.1f);
@@ -87,15 +77,6 @@ public class GameManager : MonoBehaviour
             puzzleManager.OnComboChanged += HandleComboChanged;
             puzzleManager.OnAutoShuffle += HandleAutoShuffle;
         }
-
-        if (resetButton != null)
-            resetButton.onClick.AddListener(OnResetButtonClicked);
-
-        if (confirmYesButton != null)
-            confirmYesButton.onClick.AddListener(OnConfirmYes);
-
-        if (confirmNoButton != null)
-            confirmNoButton.onClick.AddListener(OnConfirmNo);
 
         if (retryButton != null)
             retryButton.onClick.AddListener(OnRetryButtonClicked);
@@ -125,9 +106,6 @@ public class GameManager : MonoBehaviour
         if (gameOverPanel != null)
             gameOverPanel.SetActive(false);
 
-        if (confirmResetPanel != null)
-            confirmResetPanel.SetActive(false);
-
         if (comboText != null)
             comboText.gameObject.SetActive(false);
 
@@ -152,7 +130,6 @@ public class GameManager : MonoBehaviour
         if (scoreText != null) scoreText.gameObject.SetActive(visible);
         if (timeText != null) timeText.gameObject.SetActive(visible);
         if (lastCombineText != null) lastCombineText.gameObject.SetActive(visible);
-        if (resetButton != null) resetButton.gameObject.SetActive(visible);
         if (highScoreText != null) highScoreText.gameObject.SetActive(visible);
         if (modeLabel != null) modeLabel.gameObject.SetActive(visible);
     }
@@ -289,10 +266,10 @@ public class GameManager : MonoBehaviour
         if (comboText == null) yield break;
 
         comboText.gameObject.SetActive(true);
-        comboText.text = "Shuffle!";
+        comboText.text = "No More Moves!\nShuffle!";
         comboText.color = new Color(0.2f, 0.8f, 1f);
 
-        float duration = 0.6f;
+        float duration = 0.8f;
         float elapsed = 0f;
 
         while (elapsed < duration)
@@ -322,14 +299,6 @@ public class GameManager : MonoBehaviour
         ShowTimeBonusPopup($"+{seconds:F0}sec");
     }
 
-    private void SubtractTime(float seconds)
-    {
-        if (isGameOver) return;
-        remainingTime = Mathf.Max(0f, remainingTime - seconds);
-        ShowTimeBonusPopup($"-{seconds:F0}sec");
-        if (remainingTime <= 0f) TriggerGameOver();
-    }
-
     // ============================================================
     // パーティクル
     // ============================================================
@@ -355,9 +324,6 @@ public class GameManager : MonoBehaviour
 
         if (puzzleManager != null)
             puzzleManager.SetGameOver(true);
-
-        if (resetButton != null)
-            resetButton.interactable = false;
 
         string highScoreKey = currentMode == GameMode.Classic ? HIGH_SCORE_CLASSIC : HIGH_SCORE_ACTION;
         if (score > highScore)
@@ -385,42 +351,6 @@ public class GameManager : MonoBehaviour
 
         // タイトル画面に戻る
         ShowTitleScreen();
-    }
-
-    // ============================================================
-    // リセットボタン
-    // ============================================================
-
-    private void OnResetButtonClicked()
-    {
-        if (isGameOver || !isPlaying) return;
-
-        if (confirmResetPanel == null)
-        {
-            puzzleManager?.ResetBoard();
-            SubtractTime(resetTimePenalty);
-            return;
-        }
-
-        if (confirmResetText != null)
-            confirmResetText.text = $"盤面を入れ替えますか？\n（ペナルティ: -{resetTimePenalty:F0}秒）";
-
-        confirmResetPanel.SetActive(true);
-    }
-
-    private void OnConfirmYes()
-    {
-        if (confirmResetPanel != null)
-            confirmResetPanel.SetActive(false);
-
-        puzzleManager?.ResetBoard();
-        SubtractTime(resetTimePenalty);
-    }
-
-    private void OnConfirmNo()
-    {
-        if (confirmResetPanel != null)
-            confirmResetPanel.SetActive(false);
     }
 
     // ============================================================
@@ -468,10 +398,7 @@ public class GameManager : MonoBehaviour
         timeBonusPopup.gameObject.SetActive(true);
         timeBonusPopup.text = text;
 
-        bool isBonus = text.StartsWith("+");
-        timeBonusPopup.color = isBonus
-            ? new Color(0.1f, 0.7f, 0.2f)
-            : new Color(0.9f, 0.2f, 0.1f);
+        timeBonusPopup.color = new Color(0.1f, 0.7f, 0.2f);
 
         Vector3 startPos = timeBonusPopup.rectTransform.anchoredPosition;
         float elapsed = 0f;
@@ -491,21 +418,6 @@ public class GameManager : MonoBehaviour
 
         timeBonusPopup.gameObject.SetActive(false);
         timeBonusPopup.rectTransform.anchoredPosition = startPos;
-    }
-
-    private IEnumerator FlashResetButton()
-    {
-        float t = 0f;
-        while (true)
-        {
-            t += Time.deltaTime * 3f;
-            float lerp = (Mathf.Sin(t) + 1f) / 2f;
-            if (resetButtonImage != null)
-                resetButtonImage.color = Color.Lerp(
-                    new Color(0.9f, 0.2f, 0.15f),
-                    new Color(0.6f, 0.1f, 0.1f), lerp);
-            yield return null;
-        }
     }
 
     private void OnDestroy()

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEditor;
 using TMPro;
+using System.Text;
 
 /// <summary>
 /// 漢字合体パズルゲームのシーンセットアップを自動実行するエディタツール
@@ -29,6 +30,7 @@ public class ProjectSetupTool : Editor
         CreateRecipeAssets();
         CreatePrefabs();
         SetupSceneObjects();
+        UpdateGameDesignDoc();
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -454,50 +456,6 @@ public class ProjectSetupTool : Editor
             48, fontSDF, new Color(1f, 0.8f, 0f), TextAlignmentOptions.Center);
         comboTextGO.SetActive(false);
 
-        // ===== 常設リセットボタン（右下） =====
-        GameObject resetBtnGO = CreateButton(canvasGO, "ResetButton", "リセット",
-            new Vector2(350, -230), new Vector2(120, 40),
-            fontSDF, new Color(0.5f, 0.5f, 0.55f), Color.white);
-
-        Image resetBtnImage = resetBtnGO.GetComponent<Image>();
-        TextMeshProUGUI resetBtnLabel = resetBtnGO.GetComponentInChildren<TextMeshProUGUI>();
-
-        // ===== 確認ダイアログパネル =====
-        GameObject confirmPanel = new GameObject("ConfirmResetPanel");
-        confirmPanel.transform.SetParent(canvasGO.transform, false);
-
-        RectTransform cpRT = confirmPanel.AddComponent<RectTransform>();
-        cpRT.anchorMin = Vector2.zero;
-        cpRT.anchorMax = Vector2.one;
-        cpRT.sizeDelta = Vector2.zero;
-
-        Image cpBg = confirmPanel.AddComponent<Image>();
-        cpBg.color = new Color(0, 0, 0, 0.5f);
-
-        GameObject dialogBox = new GameObject("DialogBox");
-        dialogBox.transform.SetParent(confirmPanel.transform, false);
-
-        RectTransform dbRT = dialogBox.AddComponent<RectTransform>();
-        dbRT.anchoredPosition = Vector2.zero;
-        dbRT.sizeDelta = new Vector2(500, 250);
-
-        Image dbBg = dialogBox.AddComponent<Image>();
-        dbBg.color = new Color(0.95f, 0.92f, 0.88f);
-
-        GameObject confirmTextGO = CreateTMPText(dialogBox, "ConfirmText",
-            "盤面を入れ替えますか？\n（ペナルティ: -10秒）",
-            new Vector2(0, 30), new Vector2(450, 130),
-            26, fontSDF, new Color(0.2f, 0.15f, 0.1f), TextAlignmentOptions.Center);
-
-        GameObject yesBtnGO = CreateButton(dialogBox, "YesButton", "はい",
-            new Vector2(-90, -80), new Vector2(140, 50),
-            fontSDF, new Color(0.2f, 0.6f, 0.3f), Color.white);
-
-        GameObject noBtnGO = CreateButton(dialogBox, "NoButton", "いいえ",
-            new Vector2(90, -80), new Vector2(140, 50),
-            fontSDF, new Color(0.6f, 0.3f, 0.2f), Color.white);
-
-        confirmPanel.SetActive(false);
 
         // ===== ゲームオーバーパネル =====
         GameObject gameOverPanel = new GameObject("GameOverPanel");
@@ -624,14 +582,7 @@ public class ProjectSetupTool : Editor
         gmSO.FindProperty("timeText").objectReferenceValue = timeText.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("timeBonusPopup").objectReferenceValue = timeBonusPopup.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("lastCombineText").objectReferenceValue = lastCombineText.GetComponent<TextMeshProUGUI>();
-        gmSO.FindProperty("resetButton").objectReferenceValue = resetBtnGO.GetComponent<Button>();
-        gmSO.FindProperty("resetButtonLabel").objectReferenceValue = resetBtnLabel;
-        gmSO.FindProperty("resetButtonImage").objectReferenceValue = resetBtnImage;
         gmSO.FindProperty("comboText").objectReferenceValue = comboTextGO.GetComponent<TextMeshProUGUI>();
-        gmSO.FindProperty("confirmResetPanel").objectReferenceValue = confirmPanel;
-        gmSO.FindProperty("confirmResetText").objectReferenceValue = confirmTextGO.GetComponent<TextMeshProUGUI>();
-        gmSO.FindProperty("confirmYesButton").objectReferenceValue = yesBtnGO.GetComponent<Button>();
-        gmSO.FindProperty("confirmNoButton").objectReferenceValue = noBtnGO.GetComponent<Button>();
         gmSO.FindProperty("gameOverPanel").objectReferenceValue = gameOverPanel;
         gmSO.FindProperty("gameOverScoreText").objectReferenceValue = gameOverScoreText.GetComponent<TextMeshProUGUI>();
         gmSO.FindProperty("retryButton").objectReferenceValue = retryBtnGO.GetComponent<Button>();
@@ -718,5 +669,77 @@ public class ProjectSetupTool : Editor
             recipes[i] = AssetDatabase.LoadAssetAtPath<KanjiRecipe>(path);
         }
         return recipes;
+    }
+
+    // ============================================================
+    // 仕様書自動更新
+    // ============================================================
+
+    private static void UpdateGameDesignDoc()
+    {
+        string docPath = "Assets/GameDesignDoc.md";
+
+        // 既存ファイルを読み込み
+        string existingContent = "";
+        if (System.IO.File.Exists(docPath))
+        {
+            existingContent = System.IO.File.ReadAllText(docPath);
+        }
+
+        // レシピ一覧セクションを動的生成
+        KanjiRecipe[] allRecipes = LoadAllRecipes();
+
+        StringBuilder recipeSection = new StringBuilder();
+        recipeSection.AppendLine("<!-- AUTO-GENERATED RECIPE TABLE START -->");
+        recipeSection.AppendLine("## 現在のレシピ一覧（自動生成）");
+        recipeSection.AppendLine("");
+        recipeSection.AppendLine($"全 {allRecipes.Length} 件のレシピが登録されています。");
+        recipeSection.AppendLine("");
+        recipeSection.AppendLine("| # | 素材A | 素材B | 結果 | スコア |");
+        recipeSection.AppendLine("|---|-------|-------|------|--------|");
+
+        for (int i = 0; i < allRecipes.Length; i++)
+        {
+            var r = allRecipes[i];
+            if (r != null)
+            {
+                recipeSection.AppendLine($"| {i + 1} | {r.materialA} | {r.materialB} | {r.result} | {r.score} |");
+            }
+        }
+        recipeSection.AppendLine("");
+        recipeSection.AppendLine($"*最終更新: {System.DateTime.Now:yyyy-MM-dd HH:mm}*");
+        recipeSection.Append("<!-- AUTO-GENERATED RECIPE TABLE END -->");
+
+        string startMarker = "<!-- AUTO-GENERATED RECIPE TABLE START -->";
+        string endMarker = "<!-- AUTO-GENERATED RECIPE TABLE END -->";
+
+        if (existingContent.Contains(startMarker) && existingContent.Contains(endMarker))
+        {
+            // 既存セクションを置換（重複防止）
+            int startIdx = existingContent.IndexOf(startMarker);
+            int endIdx = existingContent.IndexOf(endMarker) + endMarker.Length;
+            existingContent = existingContent.Substring(0, startIdx)
+                + recipeSection.ToString()
+                + existingContent.Substring(endIdx);
+        }
+        else
+        {
+            // 未挿入の場合、末尾に追加
+            existingContent += "\n---\n\n" + recipeSection.ToString() + "\n";
+        }
+
+        // 最終更新日をヘッダに反映
+        string dateMarkerOld = "<!-- 最終更新日:";
+        if (existingContent.Contains(dateMarkerOld))
+        {
+            int dStart = existingContent.IndexOf(dateMarkerOld);
+            int dEnd = existingContent.IndexOf("-->", dStart) + 3;
+            existingContent = existingContent.Substring(0, dStart)
+                + $"<!-- 最終更新日: {System.DateTime.Now:yyyy-MM-dd} -->"
+                + existingContent.Substring(dEnd);
+        }
+
+        System.IO.File.WriteAllText(docPath, existingContent);
+        Debug.Log($"[ProjectSetupTool] GameDesignDoc.md 更新完了（レシピ {allRecipes.Length} 件）");
     }
 }
