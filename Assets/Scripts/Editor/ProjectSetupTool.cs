@@ -117,20 +117,15 @@ public class ProjectSetupTool : Editor
         CreateRecipe("Recipe_GetsuShutsu", "月", "出", "朏", 300);
         CreateRecipe("Recipe_MokuShou", "木", "昌", "椙", 300);
 
-        // ===== 部首ワイルドカードレシピ =====
-        // 氵 (さんずい)
-        CreateRecipe("Recipe_SanzuiNichi", "氵", "日", "汨", 200);
-        CreateRecipe("Recipe_SanzuiGetsu", "氵", "月", "汐", 200);
-        CreateRecipe("Recipe_SanzuiMoku", "氵", "木", "沐", 200);
+        // ===== 元漢字レシピ（部首から元漢字に統一） =====
+        // 水 (さんずいの元漢字)
+        CreateRecipe("Recipe_MizuNichi", "水", "日", "汨", 200);
+        CreateRecipe("Recipe_MizuGetsu", "水", "月", "汐", 200);
+        CreateRecipe("Recipe_MizuMoku", "水", "木", "沐", 200);
 
-        // 亻 (にんべん)
-        CreateRecipe("Recipe_NinbenRitsu", "亻", "立", "位", 200);
-        CreateRecipe("Recipe_NinbenMoku", "亻", "木", "休", 200);
-        CreateRecipe("Recipe_NinbenSan", "亻", "山", "仙", 200);
-
-        // 扌 (てへん)
-        CreateRecipe("Recipe_TehenDen", "扌", "田", "打", 200);
-        CreateRecipe("Recipe_TehenRyoku", "扌", "力", "扛", 200);
+        // 手 (てへんの元漢字)
+        CreateRecipe("Recipe_TeDen", "手", "田", "打", 200);
+        CreateRecipe("Recipe_TeRyoku", "手", "力", "扛", 200);
     }
 
     private static KanjiRecipe CreateRecipe(string fileName, string a, string b, string result, int score)
@@ -352,7 +347,7 @@ public class ProjectSetupTool : Editor
 
         // 漢字プール（基本10種 + 部首3種）
         SerializedProperty kanjiPoolProp = boardSO.FindProperty("kanjiPool");
-        string[] kanjiPool = { "木", "火", "日", "月", "人", "田", "力", "山", "石", "立", "氵", "亻", "扌" };
+        string[] kanjiPool = { "木", "火", "日", "月", "人", "田", "力", "山", "石", "立", "水", "手" };
         kanjiPoolProp.arraySize = kanjiPool.Length;
         for (int i = 0; i < kanjiPool.Length; i++)
         {

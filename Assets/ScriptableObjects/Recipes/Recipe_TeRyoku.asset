@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5b7da300f85316041ae7d13b009bde3e, type: 3}
-  m_Name: Recipe_SanzuiGetsu
+  m_Name: Recipe_TeRyoku
   m_EditorClassIdentifier: Assembly-CSharp::KanjiRecipe
-  materialA: "\u6C35"
-  materialB: "\u6708"
-  result: "\u6C50"
+  materialA: "\u624B"
+  materialB: "\u529B"
+  result: "\u625B"
   score: 200
   isWildcardA: 0
   isWildcardB: 0
